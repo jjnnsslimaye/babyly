@@ -1,9 +1,9 @@
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function BuyNothing() {
+export default function Free() {
   return (
     <View style={styles.container}>
-      <Text>Buy Nothing</Text>
+      <Text>Free</Text>
     </View>
   );
 }
