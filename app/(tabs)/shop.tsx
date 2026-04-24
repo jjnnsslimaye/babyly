@@ -3,19 +3,20 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   FlatList,
   Image,
   ActivityIndicator,
   TextInput,
   Modal,
+  ScrollView,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { MasonryFlashList } from '@shopify/flash-list';
 
 type Listing = {
   id: string;
@@ -25,26 +26,22 @@ type Listing = {
   category_name: string;
   distance_meters: number;
   created_at: string;
+  condition: string;
   is_featured?: boolean;
 };
-
-type Category = {
-  label: string;
-  slug: string | null;
-};
-
-const CATEGORIES: Category[] = [
-  { label: 'All Items', slug: null },
-  { label: 'Clothes', slug: 'clothes' },
-  { label: 'Gear', slug: 'gear' },
-  { label: 'Toys', slug: 'toys' },
-];
 
 const CONDITIONS = [
   { label: 'New (unopened)', value: 'new_unopened' },
   { label: 'Like new', value: 'like_new' },
   { label: 'Gently used', value: 'gently_used' },
   { label: 'Used', value: 'used' },
+];
+
+const CATEGORIES = [
+  { label: 'All', slug: null },
+  { label: 'Clothes', slug: 'clothes' },
+  { label: 'Gear', slug: 'gear' },
+  { label: 'Toys', slug: 'toys' },
 ];
 
 const RADIUS_OPTIONS = [
@@ -57,6 +54,16 @@ const RADIUS_OPTIONS = [
 const USER_LAT = 33.1972;
 const USER_LNG = -96.6397;
 const PAGE_SIZE = 20;
+
+function formatCondition(condition: string): string {
+  const conditionMap: Record<string, string> = {
+    new_unopened: 'New (Unopened)',
+    like_new: 'Like New',
+    gently_used: 'Gently Used',
+    used: 'Used',
+  };
+  return conditionMap[condition] || condition;
+}
 
 function SkeletonCard() {
   const shimmerValue = useRef(new Animated.Value(0.4)).current;
@@ -89,18 +96,20 @@ function SkeletonCard() {
           { opacity: shimmerValue },
         ]}
       />
-      <Animated.View
-        style={[
-          styles.skeletonTitle,
-          { opacity: shimmerValue },
-        ]}
-      />
-      <Animated.View
-        style={[
-          styles.skeletonMeta,
-          { opacity: shimmerValue },
-        ]}
-      />
+      <View style={styles.skeletonBody}>
+        <Animated.View
+          style={[
+            styles.skeletonTitle,
+            { opacity: shimmerValue },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.skeletonMeta,
+            { opacity: shimmerValue },
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -115,7 +124,6 @@ function SkeletonGrid() {
       keyExtractor={(item) => item.id}
       numColumns={2}
       columnWrapperStyle={styles.columnWrapper}
-      ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
       contentContainerStyle={styles.listContent}
       scrollEnabled={false}
     />
@@ -138,11 +146,6 @@ function ListingCard({ listing }: { listing: Listing }) {
           style={styles.photo}
           resizeMode="cover"
         />
-        {listing.is_featured && (
-          <View style={styles.featuredBadge}>
-            <Text style={styles.featuredText}>Featured</Text>
-          </View>
-        )}
         <View style={styles.priceBadge}>
           <Text style={styles.priceText}>${priceFormatted}</Text>
         </View>
@@ -150,21 +153,25 @@ function ListingCard({ listing }: { listing: Listing }) {
           <Ionicons name="heart-outline" size={18} color="#CCCCCC" />
         </View>
       </View>
-      <Text style={styles.listingTitle} numberOfLines={1}>
-        {listing.title}
-      </Text>
-      <View style={styles.metaRow}>
-        <Ionicons name="location-outline" size={11} color="#A4C8D8" />
-        <Text style={styles.metaText}>
-          {distanceMiles} mi • {listing.category_name}
+      <View style={styles.cardBody}>
+        <Text style={styles.listingTitle} numberOfLines={1}>
+          {listing.title}
         </Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.conditionText}>
+            {formatCondition(listing.condition).toUpperCase()}
+          </Text>
+          <View style={styles.distanceContainer}>
+            <Ionicons name="location-outline" size={11} color="#A4C8D8" />
+            <Text style={styles.distanceText}>{distanceMiles} mi</Text>
+          </View>
+        </View>
       </View>
     </TouchableOpacity>
   );
 }
 
 export default function Shop() {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -172,7 +179,6 @@ export default function Shop() {
   const [hasMore, setHasMore] = useState(true);
 
   // Search
-  const [searchVisible, setSearchVisible] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -180,12 +186,14 @@ export default function Shop() {
 
   // Filter - Active state (used by fetchListings)
   const [filterVisible, setFilterVisible] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeConditions, setActiveConditions] = useState<string[]>([]);
   const [activeMinPrice, setActiveMinPrice] = useState(0);
   const [activeMaxPrice, setActiveMaxPrice] = useState(500);
   const [activeRadius, setActiveRadius] = useState(80467);
 
   // Filter - Pending state (used by modal UI only)
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [pendingConditions, setPendingConditions] = useState<string[]>([]);
   const [pendingMinPrice, setPendingMinPrice] = useState(0);
   const [pendingMaxPrice, setPendingMaxPrice] = useState(500);
@@ -215,7 +223,7 @@ export default function Shop() {
           user_lng: USER_LNG,
           user_id: null,
           radius_meters: activeRadius,
-          category_slug: selectedCategory,
+          category_slug: activeCategory,
           search_query: searchQuery || null,
           condition_filter: activeConditions.length > 0 ? activeConditions[0] : null,
           min_price: activeMinPrice,
@@ -246,16 +254,12 @@ export default function Shop() {
         setLoadingMore(false);
       }
     },
-    [selectedCategory, searchQuery, activeConditions, activeMinPrice, activeMaxPrice, activeRadius]
+    [searchQuery, activeCategory, activeConditions, activeMinPrice, activeMaxPrice, activeRadius]
   );
 
   useEffect(() => {
     fetchListings();
   }, [fetchListings]);
-
-  const handleCategoryPress = (slug: string | null) => {
-    setSelectedCategory(slug);
-  };
 
   const handleLoadMore = () => {
     if (loadingMore || !hasMore || listings.length === 0) return;
@@ -283,6 +287,7 @@ export default function Shop() {
   };
 
   const handleResetFilters = () => {
+    setPendingCategory(null);
     setPendingConditions([]);
     setPendingMinPrice(0);
     setPendingMaxPrice(500);
@@ -290,6 +295,7 @@ export default function Shop() {
   };
 
   const handleApplyFilters = () => {
+    setActiveCategory(pendingCategory);
     setActiveConditions(pendingConditions);
     setActiveMinPrice(pendingMinPrice);
     setActiveMaxPrice(pendingMaxPrice);
@@ -299,6 +305,7 @@ export default function Shop() {
 
   const handleOpenFilter = () => {
     // Sync pending state from active state when modal opens
+    setPendingCategory(activeCategory);
     setPendingConditions(activeConditions);
     setPendingMinPrice(activeMinPrice);
     setPendingMaxPrice(activeMaxPrice);
@@ -308,6 +315,7 @@ export default function Shop() {
 
   // Computed value for filter indicator
   const hasActiveFilters =
+    activeCategory !== null ||
     activeConditions.length > 0 ||
     activeMinPrice > 0 ||
     activeMaxPrice < 500 ||
@@ -340,110 +348,58 @@ export default function Shop() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Babyly</Text>
-        <View style={styles.headerIcons}>
-          <TouchableOpacity onPress={() => setSearchVisible(!searchVisible)}>
-            <Ionicons name="search-outline" size={24} color="#1A1A1A" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => {}}>
-            <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
-          </TouchableOpacity>
+        <TouchableOpacity onPress={() => {}}>
+          <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputRow}>
+          <Ionicons name="search-outline" size={18} color="#AAAAAA" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search for clothes, toys..."
+            placeholderTextColor="#AAAAAA"
+            value={searchInput}
+            onChangeText={handleSearchChange}
+          />
+          {searchInput !== '' && (
+            <TouchableOpacity
+              onPress={() => {
+                setSearchInput('');
+                setSearchQuery('');
+              }}
+            >
+              <Ionicons name="close-circle" size={18} color="#AAAAAA" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* Search Input */}
-      {searchVisible && (
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputRow}>
-            <Ionicons name="search-outline" size={18} color="#999999" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search listings..."
-              placeholderTextColor="#BBBBBB"
-              value={searchInput}
-              onChangeText={handleSearchChange}
-            />
-            {searchInput !== '' && (
-              <TouchableOpacity
-                onPress={() => {
-                  setSearchInput('');
-                  setSearchQuery('');
-                }}
-              >
-                <Ionicons name="close-circle" size={18} color="#BBBBBB" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      )}
-
-      {/* Location Bar */}
-      <TouchableOpacity style={styles.locationBar} onPress={() => {}}>
-        <View style={styles.locationLeft}>
-          <Ionicons name="location-outline" size={18} color="#A4C8D8" />
-          <View style={styles.locationTextColumn}>
-            <Text style={styles.locationLabel}>SHOWING ITEMS NEAR</Text>
-            <Text style={styles.locationValue}>McKinney, TX • 10 miles</Text>
-          </View>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color="#999999" />
-      </TouchableOpacity>
-
-      {/* Category Pills */}
-      <View style={styles.categoryRow}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryScrollContent}
-        >
-          {CATEGORIES.map((category) => {
-            const isSelected = category.slug === selectedCategory;
-            return (
-              <TouchableOpacity
-                key={category.slug || 'all'}
-                style={[
-                  styles.categoryPill,
-                  isSelected && styles.categoryPillSelected,
-                ]}
-                onPress={() => handleCategoryPress(category.slug)}
-              >
-                <Text
-                  style={[
-                    styles.categoryPillText,
-                    isSelected && styles.categoryPillTextSelected,
-                  ]}
-                >
-                  {category.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-        <TouchableOpacity
-          style={styles.filterButton}
-          onPress={handleOpenFilter}
-        >
-          <View>
-            <Ionicons name="options-outline" size={22} color="#1A1A1A" />
-            {hasActiveFilters && (
-              <View style={styles.filterIndicator} />
-            )}
-          </View>
+      {/* Location + Filter Row */}
+      <View style={styles.locationFilterRow}>
+        <TouchableOpacity style={styles.locationPill} onPress={() => {}}>
+          <Ionicons name="location-outline" size={15} color="#A4C8D8" />
+          <Text style={styles.locationText}>McKinney, TX • 10 mi</Text>
+          <Ionicons name="chevron-down" size={14} color="#999999" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.filterButton} onPress={handleOpenFilter}>
+          <Ionicons name="options-outline" size={20} color="#1A1A1A" />
+          {hasActiveFilters && <View style={styles.filterIndicator} />}
         </TouchableOpacity>
       </View>
 
       {/* Listing Grid, Skeleton Grid, or Empty State */}
       {isRefreshing ? (
         <SkeletonGrid />
-      ) : listings.length === 0 ? (
-        renderEmptyState()
       ) : (
-        <FlatList
+        <MasonryFlashList
           data={listings}
           renderItem={renderListingCard}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          columnWrapperStyle={styles.columnWrapper}
-          ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+          estimatedItemSize={220}
           contentContainerStyle={styles.listContent}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.3}
@@ -454,6 +410,7 @@ export default function Shop() {
               </View>
             ) : null
           }
+          ListEmptyComponent={renderEmptyState()}
         />
       )}
 
@@ -477,6 +434,35 @@ export default function Shop() {
           </View>
 
           <ScrollView>
+            {/* Category Section */}
+            <Text style={styles.sectionLabel}>CATEGORY</Text>
+            <View style={styles.categoryRow}>
+              {CATEGORIES.map((category) => {
+                const isSelected = category.slug === pendingCategory;
+                return (
+                  <TouchableOpacity
+                    key={category.slug || 'all'}
+                    style={[
+                      styles.categoryPill,
+                      isSelected && styles.categoryPillSelected,
+                    ]}
+                    onPress={() => setPendingCategory(category.slug)}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryPillText,
+                        isSelected && styles.categoryPillTextSelected,
+                      ]}
+                    >
+                      {category.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.divider} />
+
             {/* Condition Section */}
             <Text style={styles.sectionLabel}>CONDITION</Text>
             {CONDITIONS.map((condition) => {
@@ -597,25 +583,21 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#1A1A1A',
   },
-  headerIcons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
   searchContainer: {
-    backgroundColor: '#ffffff',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
   },
   searchInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F7F7F7',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: '#F2F2F2',
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     gap: 8,
   },
   searchInput: {
@@ -623,73 +605,43 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#1A1A1A',
   },
-  locationBar: {
-    backgroundColor: '#F7F7F7',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingVertical: 12,
+  locationFilterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 10,
+    alignItems: 'center',
+  },
+  locationPill: {
+    flex: 1,
+    backgroundColor: '#F2F2F2',
+    borderRadius: 24,
     paddingHorizontal: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  locationLeft: {
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
-  locationTextColumn: {
-    gap: 2,
-  },
-  locationLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#999999',
-    letterSpacing: 0.5,
-  },
-  locationValue: {
-    fontSize: 15,
-    fontWeight: '600',
+  locationText: {
+    fontSize: 14,
+    fontWeight: '500',
     color: '#1A1A1A',
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  categoryScrollContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  categoryPill: {
-    backgroundColor: 'transparent',
-    borderColor: '#E0E0E0',
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  categoryPillSelected: {
-    backgroundColor: '#A4C8D8',
-    borderColor: '#A4C8D8',
-  },
-  categoryPillText: {
-    fontSize: 14,
-    color: '#666666',
-  },
-  categoryPillTextSelected: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
+    flex: 1,
   },
   filterButton: {
-    paddingHorizontal: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterIndicator: {
     position: 'absolute',
-    top: -2,
-    right: -2,
+    top: -3,
+    right: -3,
     width: 8,
     height: 8,
     borderRadius: 4,
@@ -698,40 +650,46 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
   },
   listContent: {
+    paddingTop: 4,
     paddingBottom: 20,
+    paddingHorizontal: 12,
   },
   columnWrapper: {
     paddingHorizontal: 12,
-    gap: 8,
-  },
-  itemSeparator: {
-    height: 8,
   },
   skeletonCard: {
     flex: 1,
     backgroundColor: '#ffffff',
     borderRadius: 12,
-    overflow: 'hidden',
+    marginHorizontal: 4,
+    marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   skeletonPhoto: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: 4 / 3,
     backgroundColor: '#EFEFEF',
-    borderRadius: 12,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  skeletonBody: {
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 10,
   },
   skeletonTitle: {
-    marginHorizontal: 8,
-    marginTop: 6,
     height: 14,
     borderRadius: 4,
     backgroundColor: '#EFEFEF',
     width: '80%',
   },
   skeletonMeta: {
-    marginHorizontal: 8,
-    marginTop: 4,
-    marginBottom: 8,
-    height: 12,
+    marginTop: 6,
+    height: 11,
     borderRadius: 4,
     backgroundColor: '#EFEFEF',
     width: '55%',
@@ -740,32 +698,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
     borderRadius: 12,
-    overflow: 'hidden',
+    marginHorizontal: 4,
+    marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   photoContainer: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: 4 / 3,
     backgroundColor: '#F0F0F0',
-    borderRadius: 12,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
     overflow: 'hidden',
   },
   photo: {
     width: '100%',
     height: '100%',
-  },
-  featuredBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    backgroundColor: '#A4C8D8',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-  },
-  featuredText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#ffffff',
   },
   priceBadge: {
     position: 'absolute',
@@ -792,23 +743,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cardBody: {
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
   listingTitle: {
-    paddingHorizontal: 8,
-    paddingTop: 6,
     fontSize: 14,
     fontWeight: '600',
     color: '#1A1A1A',
   },
   metaRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingTop: 2,
-    paddingBottom: 8,
-    gap: 4,
+    marginTop: 4,
   },
-  metaText: {
-    fontSize: 12,
+  conditionText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#999999',
+    letterSpacing: 0.3,
+  },
+  distanceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  distanceText: {
+    fontSize: 11,
     color: '#999999',
   },
   footerLoader: {
@@ -861,6 +824,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 20,
     paddingBottom: 12,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 8,
+    paddingBottom: 20,
+  },
+  categoryPill: {
+    backgroundColor: 'transparent',
+    borderColor: '#E0E0E0',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  categoryPillSelected: {
+    backgroundColor: '#A4C8D8',
+    borderColor: '#A4C8D8',
+  },
+  categoryPillText: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  categoryPillTextSelected: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   conditionRow: {
     flexDirection: 'row',
