@@ -449,6 +449,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   title: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 22,
     fontWeight: '700',
     color: '#1A1A1A',
@@ -478,6 +479,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
   },
   sectionLabel: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 11,
     fontWeight: '700',
     color: '#999999',
@@ -626,6 +628,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   messageSellerText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',

@@ -36,6 +36,6 @@ export default {
         projectId: "f9e2cd20-6254-4281-b3a0-c375e3f0341a"
       }
     },
-    plugins: ["expo-router"]
+    plugins: ["expo-router", "expo-font"]
   }
 };

@@ -16,7 +16,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
-import { MasonryFlashList } from '@shopify/flash-list';
 
 type Listing = {
   id: string;
@@ -347,7 +346,10 @@ export default function Shop() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Babyly</Text>
+        <View style={styles.headerLeft}>
+          <Ionicons name="bag-outline" size={31} color="#A4C8D8" />
+          <Text style={styles.wordmark}>Babyly</Text>
+        </View>
         <TouchableOpacity onPress={() => {}}>
           <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
         </TouchableOpacity>
@@ -393,13 +395,15 @@ export default function Shop() {
       {/* Listing Grid, Skeleton Grid, or Empty State */}
       {isRefreshing ? (
         <SkeletonGrid />
+      ) : listings.length === 0 ? (
+        renderEmptyState()
       ) : (
-        <MasonryFlashList
+        <FlatList
           data={listings}
           renderItem={renderListingCard}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          estimatedItemSize={220}
+          columnWrapperStyle={styles.columnWrapper}
           contentContainerStyle={styles.listContent}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.3}
@@ -410,7 +414,6 @@ export default function Shop() {
               </View>
             ) : null
           }
-          ListEmptyComponent={renderEmptyState()}
         />
       )}
 
@@ -581,10 +584,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: '#F0F0F0',
   },
-  headerTitle: {
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  wordmark: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 28,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    color: '#A4C8D8',
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -652,7 +660,6 @@ const styles = StyleSheet.create({
   listContent: {
     paddingTop: 4,
     paddingBottom: 20,
-    paddingHorizontal: 12,
   },
   columnWrapper: {
     paddingHorizontal: 12,
