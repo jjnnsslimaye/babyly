@@ -134,7 +134,7 @@ function ListingCard({ listing }: { listing: Listing }) {
   return (
     <TouchableOpacity
       style={styles.listingCard}
-      onPress={() => router.push(`/listing/${listing.id}`)}
+      onPress={() => router.push(`/listing/${listing.id}?type=buy_nothing`)}
     >
       <View style={styles.photoContainer}>
         <Image

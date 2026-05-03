@@ -6,7 +6,7 @@ INSERT INTO buy_nothing_listings (id, seller_id, title, description, condition, 
 VALUES
   (
     'f1e2d3c4-b5a6-7890-1234-567890abcdef',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Graco Pack n Play',
     'Gently used Pack n Play with bassinet insert and changing table attachment. Clean and ready to use!',
     'gently_used',
@@ -17,7 +17,7 @@ VALUES
   ),
   (
     'a1b2c3d4-e5f6-7890-1234-567890abcdef',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Bundle of 0-3M onesies',
     'Lot of 15 onesies in various colors and patterns. All in excellent condition, very gently used.',
     'like_new',
@@ -28,7 +28,7 @@ VALUES
   ),
   (
     'b2c3d4e5-f6a7-8901-2345-67890abcdef1',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Fisher Price bouncer',
     'Baby bouncer with calming vibrations. Our little one outgrew it! Works perfectly, batteries included.',
     'gently_used',
@@ -39,7 +39,7 @@ VALUES
   ),
   (
     'c3d4e5f6-a7b8-9012-3456-7890abcdef12',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Wooden stacking blocks',
     'Melissa & Doug wooden stacking blocks set. Great for developing motor skills. Like new condition!',
     'like_new',
@@ -50,7 +50,7 @@ VALUES
   ),
   (
     'd4e5f6a7-b8c9-0123-4567-890abcdef123',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Newborn swaddles and blankets',
     'Set of 5 muslin swaddles and 3 receiving blankets. All washed and ready to use.',
     'gently_used',
@@ -61,7 +61,7 @@ VALUES
   ),
   (
     'e5f6a7b8-c9d0-1234-5678-90abcdef1234',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Baby books bundle',
     'Collection of 12 board books including classics like Goodnight Moon and The Very Hungry Caterpillar.',
     'used',
@@ -72,7 +72,7 @@ VALUES
   ),
   (
     'f6a7b8c9-d0e1-2345-6789-0abcdef12345',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Boppy nursing pillow',
     'Never used! Received as a gift but already had one. Still has tags.',
     'new_unopened',
@@ -83,7 +83,7 @@ VALUES
   ),
   (
     'a7b8c9d0-e1f2-3456-7890-abcdef123456',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     '6-12M winter clothes lot',
     'Winter wardrobe for 6-12 month old. Includes sweaters, pants, jackets. Some like new, some gently used.',
     'gently_used',
@@ -94,7 +94,7 @@ VALUES
   ),
   (
     'b8c9d0e1-f2a3-4567-8901-bcdef1234567',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Play mat with hanging toys',
     'Bright Starts activity gym with soft mat and detachable toys. Clean and in working condition.',
     'used',
@@ -105,7 +105,7 @@ VALUES
   ),
   (
     'c9d0e1f2-a3b4-5678-9012-cdef12345678',
-    'acd25040-7ff4-4761-9dbe-b6835ba91516',
+    '80722ba1-1d7f-4f0c-b186-29f7b6eee007',
     'Diaper bag backpack',
     'Skip Hop diaper bag backpack in grey. Lots of pockets, stroller straps included. Great condition!',
     'like_new',

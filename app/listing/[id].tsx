@@ -16,48 +16,63 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CAROUSEL_HEIGHT = SCREEN_WIDTH * 1.0;
 
-type ListingDetail = {
+type MediaItem = {
+  id: string;
+  url: string;
+  media_type: 'photo' | 'video';
+  sort_order: number;
+  is_cover: boolean;
+};
+
+type Seller = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  avatar_url: string | null;
+  location_label: string;
+  verification_status: string;
+  total_listings: number;
+  total_sold: number;
+  member_since: string;
+};
+
+type BaseListing = {
   id: string;
   title: string;
   description: string;
-  price: number;
   condition: string;
   brand: string | null;
   status: string;
   location_label: string;
-  payment_methods: string[];
   attributes: Record<string, string>;
   cover_photo_url: string;
-  is_featured: boolean;
-  view_count: number;
-  like_count: number;
   created_at: string;
   category_name: string;
   category_slug: string;
   is_liked: boolean;
-  media: Array<{
-    id: string;
-    url: string;
-    media_type: 'photo' | 'video';
-    sort_order: number;
-    is_cover: boolean;
-  }>;
-  seller: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    avatar_url: string | null;
-    location_label: string;
-    verification_status: string;
-    total_listings: number;
-    total_sold: number;
-    member_since: string;
-  };
+  media: MediaItem[];
+  seller: Seller;
 };
+
+type ShopListing = BaseListing & {
+  kind: 'listing';
+  price: number;
+  payment_methods: string[];
+  is_featured: boolean;
+  view_count: number;
+  like_count: number;
+};
+
+type FreeItem = BaseListing & {
+  kind: 'buy_nothing';
+};
+
+type ListingDetail = ShopListing | FreeItem;
 
 function formatCondition(condition: string): string {
   const conditionMap: Record<string, string> = {
@@ -83,10 +98,45 @@ function humanizeKey(key: string): string {
     .join(' ');
 }
 
+function VideoCarouselItem({ item }: { item: MediaItem }) {
+  const player = useVideoPlayer(item.url, (p) => {
+    p.loop = true;
+    p.muted = false;
+  });
+
+  return (
+    <View style={styles.carouselItem}>
+      <VideoView
+        player={player}
+        style={styles.carouselImage}
+        contentFit="cover"
+        nativeControls={true}
+      />
+    </View>
+  );
+}
+
+function CarouselItem({ item }: { item: MediaItem }) {
+  if (item.media_type === 'video') {
+    return <VideoCarouselItem item={item} />;
+  }
+
+  return (
+    <View style={styles.carouselItem}>
+      <Image
+        source={{ uri: item.url }}
+        style={styles.carouselImage}
+        resizeMode="cover"
+      />
+    </View>
+  );
+}
+
 export default function ListingDetail() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id, type } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
+  const isBuyNothing = type === 'buy_nothing';
 
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,17 +163,31 @@ export default function ListingDetail() {
       setLoading(true);
       setError(false);
 
-      const { data, error: fetchError } = await supabase.rpc('get_listing_detail', {
-        p_listing_id: id,
-        p_user_id: null,
-      });
+      if (isBuyNothing) {
+        const { data, error: fetchError } = await supabase.rpc('get_buy_nothing_detail', {
+          p_listing_id: id,
+          p_user_id: null,
+        });
 
-      if (fetchError || !data) {
-        setError(true);
-        return;
+        if (fetchError || !data) {
+          setError(true);
+          return;
+        }
+
+        setListing({ ...data, kind: 'buy_nothing' });
+      } else {
+        const { data, error: fetchError } = await supabase.rpc('get_listing_detail', {
+          p_listing_id: id,
+          p_user_id: null,
+        });
+
+        if (fetchError || !data) {
+          setError(true);
+          return;
+        }
+
+        setListing({ ...data, kind: 'listing' });
       }
-
-      setListing(data);
     } catch (err) {
       console.error('Error fetching listing:', err);
       setError(true);
@@ -137,7 +201,9 @@ export default function ListingDetail() {
 
     try {
       await Share.share({
-        message: `${listing.title} — ${formatPrice(listing.price)} on Babyly\nhttps://babyly.app/listing/${listing.id}`,
+        message: listing.kind === 'listing'
+          ? `${listing.title} — ${formatPrice(listing.price)} on Babyly\nhttps://babyly.app/listing/${listing.id}`
+          : `${listing.title} — Free on Babyly\nhttps://babyly.app/listing/${listing.id}`,
       });
     } catch (err) {
       console.error('Error sharing:', err);
@@ -151,12 +217,6 @@ export default function ListingDetail() {
       [{ text: 'OK' }]
     );
   };
-
-  const renderCarouselItem = ({ item }: { item: ListingDetail['media'][0] }) => (
-    <View style={styles.carouselItem}>
-      <Image source={{ uri: item.url }} style={styles.carouselImage} resizeMode="cover" />
-    </View>
-  );
 
   if (loading) {
     return (
@@ -196,7 +256,7 @@ export default function ListingDetail() {
       <View style={styles.carouselContainer}>
         <FlatList
           data={listing.media}
-          renderItem={renderCarouselItem}
+          renderItem={({ item }) => <CarouselItem item={item} />}
           keyExtractor={(item) => item.id}
           horizontal
           pagingEnabled
@@ -242,7 +302,13 @@ export default function ListingDetail() {
         {/* Title and Price */}
         <View style={styles.titlePriceRow}>
           <Text style={styles.title}>{listing.title}</Text>
-          <Text style={styles.price}>{formatPrice(listing.price)}</Text>
+          {listing.kind === 'listing' ? (
+            <Text style={styles.price}>{formatPrice(listing.price)}</Text>
+          ) : (
+            <View style={styles.freeBadge}>
+              <Text style={styles.freeText}>FREE</Text>
+            </View>
+          )}
         </View>
 
         {/* Category and Condition */}
@@ -308,7 +374,7 @@ export default function ListingDetail() {
             </View>
           )}
 
-          {listing.payment_methods.length > 0 && (
+          {listing.kind === 'listing' && listing.payment_methods.length > 0 && (
             <View style={styles.paymentMethodsContainer}>
               <Text style={styles.detailLabel}>Accepted payments</Text>
               <View style={styles.paymentPills}>
@@ -461,6 +527,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#A4C8D8',
     flexShrink: 0,
+  },
+  freeBadge: {
+    backgroundColor: '#A4C8D8',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+  },
+  freeText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   categoryConditionRow: {
     paddingHorizontal: 16,
