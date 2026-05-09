@@ -2,11 +2,15 @@ import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, TouchableOpacity, StyleSheet, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../_layout';
 
 function CustomTabBar(props: any) {
   const { state, descriptors, navigation } = props;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { session } = useAuth();
+
+  const PROTECTED_TABS = ['sell', 'chat', 'profile'];
 
   return (
     <View
@@ -28,7 +32,13 @@ function CustomTabBar(props: any) {
           return (
             <Pressable
               key={route.key}
-              onPress={() => router.push('/sell')}
+              onPress={() => {
+                if (!session) {
+                  router.push('/login');
+                  return;
+                }
+                router.push('/sell');
+              }}
               style={styles.sellButtonContainer}
             >
               {({ pressed }) => (
@@ -42,6 +52,11 @@ function CustomTabBar(props: any) {
 
         // Standard tabs
         const onPress = () => {
+          if (PROTECTED_TABS.includes(route.name) && !session) {
+            router.push('/login');
+            return;
+          }
+
           const event = navigation.emit({
             type: 'tabPress',
             target: route.key,

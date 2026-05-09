@@ -1,6 +1,26 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { useEffect } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useAuth } from '../_layout';
 
 export default function Chat() {
+  const router = useRouter();
+  const { session, loadingSession } = useAuth();
+
+  useEffect(() => {
+    if (!loadingSession && !session) {
+      router.push('/login');
+    }
+  }, [loadingSession]);
+
+  if (loadingSession) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
+        <ActivityIndicator size="large" color="#A4C8D8" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text>Chat</Text>

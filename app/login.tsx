@@ -73,8 +73,8 @@ export default function Login() {
         return;
       }
 
-      // Success - navigate to shop
-      router.replace('/(tabs)/shop');
+      // Success - navigate back
+      router.back();
     } catch (err) {
       console.error('Unexpected error:', err);
       setError('An error occurred. Please try again.');

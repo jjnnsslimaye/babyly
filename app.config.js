@@ -15,7 +15,11 @@ export default {
       backgroundColor: "#ffffff"
     },
     ios: {
-      supportsTablet: true
+      supportsTablet: true,
+      infoPlist: {
+        NSCameraUsageDescription: "Babyly needs camera access to take your profile photo.",
+        NSPhotoLibraryUsageDescription: "Babyly needs photo library access to choose your profile photo.",
+      }
     },
     android: {
       package: "com.jnlimaye.babyly",
@@ -24,7 +28,12 @@ export default {
         backgroundColor: "#ffffff"
       },
       edgeToEdgeEnabled: true,
-      predictiveBackGestureEnabled: false
+      predictiveBackGestureEnabled: false,
+      permissions: [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     web: {
       favicon: "./assets/favicon.png"
@@ -36,6 +45,6 @@ export default {
         projectId: "f9e2cd20-6254-4281-b3a0-c375e3f0341a"
       }
     },
-    plugins: ["expo-router", "expo-font", "expo-video"]
+    plugins: ["expo-router", "expo-font", "expo-video", "expo-image-picker", "expo-file-system"]
   }
 };
