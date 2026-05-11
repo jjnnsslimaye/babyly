@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,22 @@ import {
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
+import Constants from 'expo-constants';
 
 export default function Login() {
   const router = useRouter();
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: Constants.expoConfig?.extra?.googleWebClientId,
+      iosClientId: Constants.expoConfig?.extra?.googleIosClientId,
+      scopes: ['email', 'profile'],
+    });
+  }, []);
 
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -79,6 +92,52 @@ export default function Login() {
       console.error('Unexpected error:', err);
       setError('An error occurred. Please try again.');
       setPassword('');
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = userInfo.data?.idToken;
+
+      if (!idToken) {
+        setError('Google Sign-In failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      const { data, error: supabaseError } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+
+      if (supabaseError) {
+        console.error('Supabase Google auth error:', supabaseError);
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Success
+      setLoading(false);
+      router.replace('/(tabs)/shop');
+
+    } catch (error: any) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        setError('');
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        setError('Sign-in already in progress.');
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setError('Google Play Services not available.');
+      } else {
+        console.error('Google Sign-In error:', error);
+        setError('Something went wrong. Please try again.');
+      }
       setLoading(false);
     }
   };
@@ -177,6 +236,35 @@ export default function Login() {
           >
             <Text style={styles.forgotPasswordText}>Create an account</Text>
           </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.dividerContainer}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Google Button */}
+          <TouchableOpacity
+            style={styles.socialButton}
+            onPress={handleGoogleSignIn}
+            disabled={loading}
+          >
+            <Ionicons name="logo-google" size={20} color="#DB4437" />
+            <Text style={styles.socialButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          {/* Apple Button */}
+          <TouchableOpacity
+            style={[styles.socialButton, styles.appleButton]}
+            onPress={() => {}}
+            disabled={loading}
+          >
+            <Ionicons name="logo-apple" size={20} color="#ffffff" />
+            <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+              Continue with Apple
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -271,5 +359,44 @@ const styles = StyleSheet.create({
   forgotPasswordText: {
     fontSize: 14,
     color: '#A4C8D8',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E0E0E0',
+  },
+  dividerText: {
+    fontSize: 12,
+    color: '#999999',
+    marginHorizontal: 12,
+  },
+  socialButton: {
+    height: 52,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  socialButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  appleButton: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#1A1A1A',
+  },
+  appleButtonText: {
+    color: '#ffffff',
   },
 });

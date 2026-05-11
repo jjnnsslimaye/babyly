@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,23 @@ import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
+import Constants from 'expo-constants';
 
 export default function AccountSetup() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: Constants.expoConfig?.extra?.googleWebClientId,
+      iosClientId: Constants.expoConfig?.extra?.googleIosClientId,
+      scopes: ['email', 'profile'],
+    });
+  }, []);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -120,6 +133,52 @@ export default function AccountSetup() {
     } catch (err) {
       console.error('Unexpected error:', err);
       setError('Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = userInfo.data?.idToken;
+
+      if (!idToken) {
+        setError('Google Sign-In failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      const { data, error: supabaseError } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+
+      if (supabaseError) {
+        console.error('Supabase Google auth error:', supabaseError);
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Success
+      setLoading(false);
+      router.replace('/personalize');
+
+    } catch (error: any) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        setError('');
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        setError('Sign-in already in progress.');
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setError('Google Play Services not available.');
+      } else {
+        console.error('Google Sign-In error:', error);
+        setError('Something went wrong. Please try again.');
+      }
       setLoading(false);
     }
   };
@@ -268,7 +327,7 @@ export default function AccountSetup() {
           {/* Google Button */}
           <TouchableOpacity
             style={styles.socialButton}
-            onPress={() => {}}
+            onPress={handleGoogleSignIn}
             disabled={loading}
           >
             <Ionicons name="logo-google" size={20} color="#DB4437" />
