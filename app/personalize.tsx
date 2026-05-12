@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Image,
   Alert,
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -40,11 +40,23 @@ export default function Personalize() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [zipCode, setZipCode] = useState('');
   const [communityAnswer, setCommunityAnswer] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const { googleFirstName, googleLastName } = useLocalSearchParams<{
+    googleFirstName?: string;
+    googleLastName?: string;
+  }>();
+
+  useEffect(() => {
+    if (googleFirstName) setFirstName(googleFirstName);
+    if (googleLastName) setLastName(googleLastName);
+  }, [googleFirstName, googleLastName]);
 
   const handlePickImage = async () => {
     Alert.alert(
@@ -98,6 +110,19 @@ export default function Personalize() {
   };
 
   const handleFinishProfile = async () => {
+    if (!firstName.trim()) {
+      setError('Please enter your first name.');
+      return;
+    }
+    if (!lastName.trim()) {
+      setError('Please enter your last name.');
+      return;
+    }
+    if (!zipCode || zipCode.length < 5) {
+      setError('Please enter a valid zip code.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -111,6 +136,9 @@ export default function Personalize() {
       }
 
       const updates: Record<string, any> = {};
+
+      updates.first_name = firstName.trim();
+      updates.last_name = lastName.trim();
 
       // Avatar upload (only if avatarUri is set)
       if (avatarUri) {
@@ -179,6 +207,9 @@ export default function Personalize() {
         });
       }
 
+      // Set profile as completed
+      updates.profile_completed = true;
+
       // If updates object is not empty, update the users table
       if (Object.keys(updates).length > 0) {
         const { error: updateError } = await supabase
@@ -214,17 +245,12 @@ export default function Personalize() {
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity
           style={styles.headerButton}
-          onPress={() => router.back()}
+          onPress={() => router.replace('/(tabs)/shop')}
         >
           <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Personalize</Text>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.replace('/(tabs)/shop')}
-        >
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButton} />
       </View>
 
       <ScrollView
@@ -235,6 +261,42 @@ export default function Personalize() {
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Tell us about you</Text>
           <Text style={styles.tagline}>Let the community know who you are.</Text>
+        </View>
+
+        {/* First Name + Last Name Row */}
+        <View style={styles.nameRow}>
+          <View style={styles.halfSection}>
+            <Text style={styles.label}>FIRST NAME</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="First name"
+              placeholderTextColor="#CCCCCC"
+              value={firstName}
+              onChangeText={(text) => {
+                setFirstName(text);
+                if (error) setError('');
+              }}
+              autoCapitalize="words"
+              autoCorrect={false}
+              editable={!loading}
+            />
+          </View>
+          <View style={styles.halfSection}>
+            <Text style={styles.label}>LAST NAME</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Last name"
+              placeholderTextColor="#CCCCCC"
+              value={lastName}
+              onChangeText={(text) => {
+                setLastName(text);
+                if (error) setError('');
+              }}
+              autoCapitalize="words"
+              autoCorrect={false}
+              editable={!loading}
+            />
+          </View>
         </View>
 
         {/* Avatar Upload Section */}
@@ -336,11 +398,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1A1A1A',
   },
-  skipText: {
-    fontSize: 16,
-    color: '#A4C8D8',
-    textAlign: 'right',
-  },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -362,6 +419,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999999',
     textAlign: 'center',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  halfSection: {
+    width: '48%',
   },
   avatarContainer: {
     alignItems: 'center',

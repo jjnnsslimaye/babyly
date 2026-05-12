@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { Quicksand_600SemiBold, Quicksand_700Bold } from '@expo-google-fonts/quicksand';
 import * as SplashScreen from 'expo-splash-screen';
@@ -29,6 +29,8 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
 
+  const router = useRouter();
+
   useEffect(() => {
     if (fontsLoaded) {
       SplashScreen.hideAsync();
@@ -51,6 +53,29 @@ export default function RootLayout() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (loadingSession || !session) return;
+
+    const checkProfileCompleted = async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('profile_completed')
+        .eq('id', session.user.id)
+        .single();
+
+      if (error) {
+        console.error('Error checking profile_completed:', error);
+        return;
+      }
+
+      if (data && !data.profile_completed) {
+        router.replace('/personalize');
+      }
+    };
+
+    checkProfileCompleted();
+  }, [session, loadingSession]);
 
   if (!fontsLoaded || loadingSession) {
     return null;

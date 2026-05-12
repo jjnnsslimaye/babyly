@@ -30,15 +30,15 @@ export default function Login() {
     });
   }, []);
 
-  const [emailOrUsername, setEmailOrUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    if (!emailOrUsername || !password) {
-      setError('Please enter your email/username and password');
+    if (!email || !password) {
+      setError('Please enter your email and password');
       return;
     }
 
@@ -46,41 +46,17 @@ export default function Login() {
     setError('');
 
     try {
-      let email = emailOrUsername;
-
-      // If input doesn't contain '@', treat as username and resolve to email
-      if (!emailOrUsername.includes('@')) {
-        const { data, error: rpcError } = await supabase.rpc('get_email_by_username', {
-          p_username: emailOrUsername,
-        });
-
-        if (rpcError) {
-          console.error('RPC error:', rpcError);
-          setError('An error occurred. Please try again.');
-          setPassword('');
-          setLoading(false);
-          return;
-        }
-
-        if (!data) {
-          setError('No account found with that username');
-          setPassword('');
-          setLoading(false);
-          return;
-        }
-
-        email = data;
-      }
+      const loginEmail = email.trim();
 
       // Sign in with email and password
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
+        email: loginEmail,
         password,
       });
 
       if (authError) {
         console.error('Auth error:', authError);
-        setError('Incorrect email/username or password');
+        setError('Incorrect email or password');
         setPassword('');
         setLoading(false);
         return;
@@ -123,9 +99,41 @@ export default function Login() {
         return;
       }
 
-      // Success
+      const userId = data.user?.id;
+      if (!userId) {
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Check if user has completed profile setup
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('profile_completed')
+        .eq('id', userId)
+        .single();
+
+      if (userError) {
+        console.error('Error fetching user profile:', userError);
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
       setLoading(false);
-      router.replace('/(tabs)/shop');
+
+      if (!userData.profile_completed) {
+        // New user — pass Google name data to Personalize
+        const firstName = userInfo.data?.user?.givenName || '';
+        const lastName = userInfo.data?.user?.familyName || '';
+        router.replace({
+          pathname: '/personalize',
+          params: { googleFirstName: firstName, googleLastName: lastName },
+        });
+      } else {
+        // Returning user
+        router.back();
+      }
 
     } catch (error: any) {
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
@@ -142,8 +150,8 @@ export default function Login() {
     }
   };
 
-  const handleEmailOrUsernameChange = (text: string) => {
-    setEmailOrUsername(text);
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
     if (error) setError('');
   };
 
@@ -172,10 +180,10 @@ export default function Login() {
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            placeholder="Email or username"
+            placeholder="Email address"
             placeholderTextColor="#CCCCCC"
-            value={emailOrUsername}
-            onChangeText={handleEmailOrUsernameChange}
+            value={email}
+            onChangeText={handleEmailChange}
             autoCapitalize="none"
             autoCorrect={false}
             editable={!loading}

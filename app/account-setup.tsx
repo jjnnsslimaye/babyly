@@ -32,9 +32,6 @@ export default function AccountSetup() {
     });
   }, []);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -43,8 +40,8 @@ export default function AccountSetup() {
 
   const handleCreateAccount = async () => {
     // Validation
-    if (!firstName || !lastName || !username || !email || !password) {
-      setError('Please fill in all fields');
+    if (!email || !password) {
+      setError('Please enter your email and password');
       return;
     }
 
@@ -55,16 +52,6 @@ export default function AccountSetup() {
 
     if (!email.includes('@')) {
       setError('Please enter a valid email address');
-      return;
-    }
-
-    if (username.trim().length < 3) {
-      setError('Username must be at least 3 characters');
-      return;
-    }
-
-    if (!/^[a-zA-Z0-9_]+$/.test(username.trim())) {
-      setError('Username can only contain letters, numbers, and underscores');
       return;
     }
 
@@ -101,34 +88,7 @@ export default function AccountSetup() {
         refresh_token: session.refresh_token,
       });
 
-      const userId = data.user?.id;
-      if (!userId) {
-        setError('Something went wrong.');
-        setLoading(false);
-        return;
-      }
-
-      // Step 3 — Now update public.users profile with name and username
-      const { error: profileError } = await supabase
-        .from('users')
-        .update({
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          username: username.trim().toLowerCase(),
-        })
-        .eq('id', userId);
-
-      if (profileError) {
-        if (profileError.code === '23505') {
-          setError('Username is already taken');
-        } else {
-          setError('Something went wrong. Please try again.');
-        }
-        setLoading(false);
-        return;
-      }
-
-      // Step 4 — Navigate to personalize
+      // Step 3 — Navigate to personalize
       router.replace('/personalize');
     } catch (err) {
       console.error('Unexpected error:', err);
@@ -164,9 +124,41 @@ export default function AccountSetup() {
         return;
       }
 
-      // Success
+      const userId = data.user?.id;
+      if (!userId) {
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Check if user has completed profile setup
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('profile_completed')
+        .eq('id', userId)
+        .single();
+
+      if (userError) {
+        console.error('Error fetching user profile:', userError);
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
       setLoading(false);
-      router.replace('/personalize');
+
+      if (!userData.profile_completed) {
+        // New user — pass Google name data to Personalize
+        const firstName = userInfo.data?.user?.givenName || '';
+        const lastName = userInfo.data?.user?.familyName || '';
+        router.replace({
+          pathname: '/personalize',
+          params: { googleFirstName: firstName, googleLastName: lastName },
+        });
+      } else {
+        // Returning user
+        router.replace('/(tabs)/shop');
+      }
 
     } catch (error: any) {
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
@@ -181,11 +173,6 @@ export default function AccountSetup() {
       }
       setLoading(false);
     }
-  };
-
-  const handleFieldChange = (setter: (value: string) => void, value: string) => {
-    setter(value);
-    if (error) setError('');
   };
 
   return (
@@ -216,49 +203,16 @@ export default function AccountSetup() {
 
         {/* Form */}
         <View style={styles.form}>
-          {/* First Name + Last Name Row */}
-          <View style={styles.nameRow}>
-            <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="First name"
-              placeholderTextColor="#CCCCCC"
-              value={firstName}
-              onChangeText={(text) => handleFieldChange(setFirstName, text)}
-              autoCapitalize="words"
-              autoCorrect={false}
-              editable={!loading}
-            />
-            <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="Last name"
-              placeholderTextColor="#CCCCCC"
-              value={lastName}
-              onChangeText={(text) => handleFieldChange(setLastName, text)}
-              autoCapitalize="words"
-              autoCorrect={false}
-              editable={!loading}
-            />
-          </View>
-
-          {/* Username Input */}
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            placeholderTextColor="#CCCCCC"
-            value={username}
-            onChangeText={(text) => handleFieldChange(setUsername, text)}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
-
           {/* Email Input */}
           <TextInput
             style={styles.input}
             placeholder="Email address"
             placeholderTextColor="#CCCCCC"
             value={email}
-            onChangeText={(text) => handleFieldChange(setEmail, text)}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (error) setError('');
+            }}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -272,7 +226,10 @@ export default function AccountSetup() {
               placeholder="Min. 8 characters"
               placeholderTextColor="#CCCCCC"
               value={password}
-              onChangeText={(text) => handleFieldChange(setPassword, text)}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (error) setError('');
+              }}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoCorrect={false}
@@ -389,11 +346,6 @@ const styles = StyleSheet.create({
   form: {
     marginBottom: 32,
   },
-  nameRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
   input: {
     height: 52,
     borderWidth: 1,
@@ -403,10 +355,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1A1A1A',
     marginBottom: 16,
-  },
-  halfInput: {
-    width: '48%',
-    marginBottom: 0,
   },
   passwordContainer: {
     position: 'relative',
