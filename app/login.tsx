@@ -18,6 +18,7 @@ import {
   statusCodes,
 } from '@react-native-google-signin/google-signin';
 import Constants from 'expo-constants';
+import { setPendingGoogleProfile } from '../lib/pendingGoogleProfile';
 
 export default function Login() {
   const router = useRouter();
@@ -120,16 +121,13 @@ export default function Login() {
         return;
       }
 
-      setLoading(false);
-
       if (!userData.profile_completed) {
-        // New user — pass Google name data to Personalize
+        // New user — save Google name data for Personalize
         const firstName = userInfo.data?.user?.givenName || '';
         const lastName = userInfo.data?.user?.familyName || '';
-        router.replace({
-          pathname: '/personalize',
-          params: { googleFirstName: firstName, googleLastName: lastName },
-        });
+        setPendingGoogleProfile(firstName, lastName);
+        setLoading(false);
+        return;
       } else {
         // Returning user
         router.back();

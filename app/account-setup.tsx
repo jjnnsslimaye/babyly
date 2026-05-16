@@ -19,6 +19,7 @@ import {
   statusCodes,
 } from '@react-native-google-signin/google-signin';
 import Constants from 'expo-constants';
+import { setPendingGoogleProfile } from '../lib/pendingGoogleProfile';
 
 export default function AccountSetup() {
   const router = useRouter();
@@ -59,8 +60,8 @@ export default function AccountSetup() {
     setError('');
 
     try {
-      // Step 1 — Create auth user
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      // Create auth user
+      const { error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
       });
@@ -75,21 +76,8 @@ export default function AccountSetup() {
         return;
       }
 
-      // Step 2 — Set session so client is authenticated for subsequent calls
-      const { session } = data;
-      if (!session) {
-        setError('Something went wrong. Please try again.');
-        setLoading(false);
-        return;
-      }
-
-      await supabase.auth.setSession({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-      });
-
-      // Step 3 — Navigate to personalize
-      router.replace('/personalize');
+      setLoading(false);
+      return;
     } catch (err) {
       console.error('Unexpected error:', err);
       setError('Something went wrong. Please try again.');
@@ -145,16 +133,13 @@ export default function AccountSetup() {
         return;
       }
 
-      setLoading(false);
-
       if (!userData.profile_completed) {
-        // New user — pass Google name data to Personalize
+        // New user — save Google name data for Personalize
         const firstName = userInfo.data?.user?.givenName || '';
         const lastName = userInfo.data?.user?.familyName || '';
-        router.replace({
-          pathname: '/personalize',
-          params: { googleFirstName: firstName, googleLastName: lastName },
-        });
+        setPendingGoogleProfile(firstName, lastName);
+        setLoading(false);
+        return;
       } else {
         // Returning user
         router.replace('/(tabs)/shop');

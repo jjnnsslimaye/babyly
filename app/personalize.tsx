@@ -11,6 +11,7 @@ import {
   ScrollView,
   Image,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -57,6 +58,14 @@ export default function Personalize() {
     if (googleFirstName) setFirstName(googleFirstName);
     if (googleLastName) setLastName(googleLastName);
   }, [googleFirstName, googleLastName]);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => true
+    );
+    return () => backHandler.remove();
+  }, []);
 
   const handlePickImage = async () => {
     Alert.alert(
@@ -239,16 +248,11 @@ export default function Personalize() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.replace('/(tabs)/shop')}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
-        </TouchableOpacity>
+        <View style={styles.headerButton} />
         <Text style={styles.headerTitle}>Personalize</Text>
         <View style={styles.headerButton} />
       </View>
@@ -261,42 +265,6 @@ export default function Personalize() {
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Tell us about you</Text>
           <Text style={styles.tagline}>Let the community know who you are.</Text>
-        </View>
-
-        {/* First Name + Last Name Row */}
-        <View style={styles.nameRow}>
-          <View style={styles.halfSection}>
-            <Text style={styles.label}>FIRST NAME</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="First name"
-              placeholderTextColor="#CCCCCC"
-              value={firstName}
-              onChangeText={(text) => {
-                setFirstName(text);
-                if (error) setError('');
-              }}
-              autoCapitalize="words"
-              autoCorrect={false}
-              editable={!loading}
-            />
-          </View>
-          <View style={styles.halfSection}>
-            <Text style={styles.label}>LAST NAME</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Last name"
-              placeholderTextColor="#CCCCCC"
-              value={lastName}
-              onChangeText={(text) => {
-                setLastName(text);
-                if (error) setError('');
-              }}
-              autoCapitalize="words"
-              autoCorrect={false}
-              editable={!loading}
-            />
-          </View>
         </View>
 
         {/* Avatar Upload Section */}
@@ -313,9 +281,54 @@ export default function Personalize() {
           </View>
         </TouchableOpacity>
 
+        {/* First Name + Last Name Row */}
+        <View style={styles.nameRow}>
+          <View style={styles.halfSection}>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>FIRST NAME</Text>
+              <Text style={styles.required}> *</Text>
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="First name"
+              placeholderTextColor="#CCCCCC"
+              value={firstName}
+              onChangeText={(text) => {
+                setFirstName(text);
+                if (error) setError('');
+              }}
+              autoCapitalize="words"
+              autoCorrect={false}
+              editable={!loading}
+            />
+          </View>
+          <View style={styles.halfSection}>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>LAST NAME</Text>
+              <Text style={styles.required}> *</Text>
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Last name"
+              placeholderTextColor="#CCCCCC"
+              value={lastName}
+              onChangeText={(text) => {
+                setLastName(text);
+                if (error) setError('');
+              }}
+              autoCapitalize="words"
+              autoCorrect={false}
+              editable={!loading}
+            />
+          </View>
+        </View>
+
         {/* Zip Code Input */}
         <View style={styles.section}>
-          <Text style={styles.label}>ZIP CODE</Text>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>ZIP CODE</Text>
+            <Text style={styles.required}> *</Text>
+          </View>
           <TextInput
             style={styles.input}
             placeholder="e.g. 75070"
@@ -464,12 +477,21 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   label: {
     fontSize: 12,
     fontWeight: '600',
     color: '#999999',
     letterSpacing: 1,
-    marginBottom: 8,
+  },
+  required: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#E53935',
   },
   input: {
     height: 52,

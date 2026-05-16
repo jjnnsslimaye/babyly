@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+import { getPendingGoogleProfile, clearPendingGoogleProfile } from '../lib/pendingGoogleProfile';
 
 type AuthContextType = {
   session: Session | null;
@@ -46,8 +47,10 @@ export default function RootLayout() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
+      (event, session) => {
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+          setSession(session);
+        }
       }
     );
 
@@ -62,7 +65,7 @@ export default function RootLayout() {
         .from('users')
         .select('profile_completed')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Error checking profile_completed:', error);
@@ -70,7 +73,15 @@ export default function RootLayout() {
       }
 
       if (data && !data.profile_completed) {
-        router.replace('/personalize');
+        const { firstName, lastName } = getPendingGoogleProfile();
+        clearPendingGoogleProfile();
+        router.replace({
+          pathname: '/personalize',
+          params: {
+            googleFirstName: firstName,
+            googleLastName: lastName,
+          },
+        });
       }
     };
 
