@@ -20,6 +20,8 @@ import {
 } from '@react-native-google-signin/google-signin';
 import Constants from 'expo-constants';
 import { setPendingGoogleProfile } from '../lib/pendingGoogleProfile';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import GoogleLogo from '../components/GoogleLogo';
 
 export default function AccountSetup() {
   const router = useRouter();
@@ -160,6 +162,80 @@ export default function AccountSetup() {
     }
   };
 
+  const handleAppleSignIn = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        setError('Apple Sign-In failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      const { data, error: supabaseError } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+
+      if (supabaseError) {
+        console.error('Supabase Apple auth error:', supabaseError);
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      const userId = data.user?.id;
+      if (!userId) {
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Check if user has completed profile setup
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('profile_completed')
+        .eq('id', userId)
+        .single();
+
+      if (userError) {
+        console.error('Error fetching user profile:', userError);
+        setError('Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      if (!userData.profile_completed) {
+        // New user — pass Apple name data to Personalize if available
+        const firstName = credential.fullName?.givenName || '';
+        const lastName = credential.fullName?.familyName || '';
+        setPendingGoogleProfile(firstName, lastName);
+        setLoading(false);
+        return;
+      } else {
+        // Returning user
+        router.replace('/(tabs)/shop');
+      }
+
+    } catch (error: any) {
+      if (error.code === 'ERR_REQUEST_CANCELED') {
+        setError('');
+      } else {
+        console.error('Apple Sign-In error:', error);
+        setError('Something went wrong. Please try again.');
+      }
+      setLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -272,21 +348,23 @@ export default function AccountSetup() {
             onPress={handleGoogleSignIn}
             disabled={loading}
           >
-            <Ionicons name="logo-google" size={20} color="#DB4437" />
+            <GoogleLogo size={20} />
             <Text style={styles.socialButtonText}>Continue with Google</Text>
           </TouchableOpacity>
 
-          {/* Apple Button */}
-          <TouchableOpacity
-            style={[styles.socialButton, styles.appleButton]}
-            onPress={() => {}}
-            disabled={loading}
-          >
-            <Ionicons name="logo-apple" size={20} color="#ffffff" />
-            <Text style={[styles.socialButtonText, styles.appleButtonText]}>
-              Continue with Apple
-            </Text>
-          </TouchableOpacity>
+          {/* Apple Button — iOS only */}
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={[styles.socialButton, styles.appleButton]}
+              onPress={handleAppleSignIn}
+              disabled={loading}
+            >
+              <Ionicons name="logo-apple" size={20} color="#ffffff" />
+              <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+                Continue with Apple
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

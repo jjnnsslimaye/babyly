@@ -60,7 +60,8 @@ export default {
         {
           "iosUrlScheme": "com.googleusercontent.apps.1006472179706-tusrmoeodg4apvb6s65id3a1k6mulvmt"
         }
-      ]
+      ],
+      "expo-apple-authentication"
     ]  
   }
 };
