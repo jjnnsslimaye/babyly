@@ -17,6 +17,7 @@ import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useAuth } from '../_layout';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CAROUSEL_HEIGHT = SCREEN_WIDTH * 1.0;
@@ -46,7 +47,7 @@ type BaseListing = {
   title: string;
   description: string;
   condition: string;
-  brand: string | null;
+  brand_name: string | null;
   status: string;
   location_label: string;
   attributes: Record<string, string>;
@@ -57,6 +58,7 @@ type BaseListing = {
   is_liked: boolean;
   media: MediaItem[];
   seller: Seller;
+  seller_id: string;
 };
 
 type ShopListing = BaseListing & {
@@ -137,6 +139,7 @@ export default function ListingDetail() {
   const { id, type } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const isBuyNothing = type === 'buy_nothing';
+  const { session } = useAuth();
 
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -247,6 +250,8 @@ export default function ListingDetail() {
   const isVerified =
     listing.seller.verification_status === 'id_verified' ||
     listing.seller.verification_status === 'background_checked';
+  const isOwnListing = !!session?.user?.id && session.user.id === listing?.seller?.id;
+  const canGoBack = router.canGoBack();
 
   return (
     <View style={styles.container}>
@@ -283,9 +288,19 @@ export default function ListingDetail() {
         {/* Floating Back Button */}
         <TouchableOpacity
           style={[styles.floatingButton, styles.floatingBackButton, { top: insets.top }]}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (canGoBack) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/shop');
+            }
+          }}
         >
-          <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
+          <Ionicons
+            name={canGoBack ? 'arrow-back' : 'checkmark'}
+            size={22}
+            color="#1A1A1A"
+          />
         </TouchableOpacity>
 
         {/* Floating Heart Button */}
@@ -314,7 +329,7 @@ export default function ListingDetail() {
         {/* Category and Condition */}
         <View style={styles.categoryConditionRow}>
           <Text style={styles.categoryConditionText}>
-            {listing.category_name.toUpperCase()} • {formatCondition(listing.condition).toUpperCase()}
+            {(listing.category_name ?? 'Uncategorised').toUpperCase()} • {formatCondition(listing.condition).toUpperCase()}
           </Text>
         </View>
 
@@ -340,7 +355,7 @@ export default function ListingDetail() {
           </View>
           <View style={styles.sellerInfo}>
             <Text style={styles.sellerName}>
-              {listing.seller.first_name} {listing.seller.last_name}
+              {listing.seller?.first_name} {listing.seller?.last_name?.charAt(0)}.
             </Text>
             <Text style={styles.sellerMeta}>
               {isVerified && 'Verified Parent • '}
@@ -367,10 +382,10 @@ export default function ListingDetail() {
         {/* Details Section */}
         <Text style={styles.sectionLabel}>DETAILS</Text>
         <View style={styles.detailsContainer}>
-          {listing.brand && (
+          {listing.brand_name && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Brand</Text>
-              <Text style={styles.detailValue}>{listing.brand}</Text>
+              <Text style={styles.detailValue}>{listing.brand_name}</Text>
             </View>
           )}
 
@@ -406,13 +421,24 @@ export default function ListingDetail() {
         <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
           <Ionicons name="share-social-outline" size={22} color="#1A1A1A" />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.messageSellerButton}
-          onPress={() => router.push('/login')}
-        >
-          <Ionicons name="chatbubble-outline" size={18} color="#ffffff" />
-          <Text style={styles.messageSellerText}>Message Seller</Text>
-        </TouchableOpacity>
+        {isOwnListing ? (
+          <View style={styles.actionBar}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.editButton]}
+              disabled={true}
+            >
+              <Text style={styles.editButtonText}>Edit Listing</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.messageSellerButton}
+            onPress={() => router.push('/login')}
+          >
+            <Ionicons name="chatbubble-outline" size={18} color="#ffffff" />
+            <Text style={styles.messageSellerText}>Message Seller</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -695,6 +721,25 @@ const styles = StyleSheet.create({
     borderColor: '#E0E0E0',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  actionBar: {
+    flex: 1,
+  },
+  actionButton: {
+    height: 52,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editButton: {
+    backgroundColor: '#F0F0F0',
+    flex: 1,
+  },
+  editButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#999999',
+    textAlign: 'center',
   },
   messageSellerButton: {
     flex: 1,

@@ -20,6 +20,7 @@ export default {
       infoPlist: {
         NSCameraUsageDescription: "Babyly needs camera access to take your profile photo.",
         NSPhotoLibraryUsageDescription: "Babyly needs photo library access to choose your profile photo.",
+        NSLocationWhenInUseUsageDescription: "Babyly uses your location to show you listings nearby.",
       }
     },
     android: {
@@ -56,12 +57,18 @@ export default {
       "expo-image-picker",
       "expo-file-system",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Babyly uses your location to show you listings nearby."
+        }
+      ],
+      [
         "@react-native-google-signin/google-signin",
         {
           "iosUrlScheme": "com.googleusercontent.apps.1006472179706-tusrmoeodg4apvb6s65id3a1k6mulvmt"
         }
       ],
       "expo-apple-authentication"
-    ]  
+    ] 
   }
 };

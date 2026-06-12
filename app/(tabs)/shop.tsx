@@ -3,19 +3,42 @@ import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
   TouchableOpacity,
   FlatList,
   Image,
   ActivityIndicator,
   TextInput,
   Modal,
-  ScrollView,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../_layout';
+import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const STATE_NAME_TO_ABBR: Record<string, string> = {
+  'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ',
+  'Arkansas': 'AR', 'California': 'CA', 'Colorado': 'CO',
+  'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL',
+  'Georgia': 'GA', 'Hawaii': 'HI', 'Idaho': 'ID',
+  'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+  'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA',
+  'Maine': 'ME', 'Maryland': 'MD', 'Massachusetts': 'MA',
+  'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS',
+  'Missouri': 'MO', 'Montana': 'MT', 'Nebraska': 'NE',
+  'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+  'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC',
+  'North Dakota': 'ND', 'Ohio': 'OH', 'Oklahoma': 'OK',
+  'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI',
+  'South Carolina': 'SC', 'South Dakota': 'SD', 'Tennessee': 'TN',
+  'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT', 'Virginia': 'VA',
+  'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI',
+  'Wyoming': 'WY', 'District of Columbia': 'DC',
+};
 
 type Listing = {
   id: string;
@@ -25,8 +48,29 @@ type Listing = {
   category_name: string;
   distance_meters: number;
   created_at: string;
-  condition: string;
   is_featured?: boolean;
+  condition: string;
+};
+
+type Category = {
+  id: string;
+  parent_id: string | null;
+  name: string;
+  slug: string;
+  sort_order: number;
+};
+
+type CategoryAttribute = {
+  category_id: string;
+  attribute_key: string;
+  attribute_value: string;
+  sort_order: number;
+};
+
+type Brand = {
+  id: string;
+  name: string;
+  slug: string;
 };
 
 const CONDITIONS = [
@@ -36,13 +80,6 @@ const CONDITIONS = [
   { label: 'Used', value: 'used' },
 ];
 
-const CATEGORIES = [
-  { label: 'All', slug: null },
-  { label: 'Clothes', slug: 'clothes' },
-  { label: 'Gear', slug: 'gear' },
-  { label: 'Toys', slug: 'toys' },
-];
-
 const RADIUS_OPTIONS = [
   { label: '5 mi', meters: 8047 },
   { label: '10 mi', meters: 16093 },
@@ -50,19 +87,12 @@ const RADIUS_OPTIONS = [
   { label: '50 mi', meters: 80467 },
 ];
 
-const USER_LAT = 33.1972;
-const USER_LNG = -96.6397;
-const PAGE_SIZE = 20;
+const STORAGE_KEY_LAT = 'babyly_user_lat';
+const STORAGE_KEY_LNG = 'babyly_user_lng';
+const STORAGE_KEY_LABEL = 'babyly_location_label';
+const STORAGE_KEY_RADIUS = 'babyly_radius_meters';
 
-function formatCondition(condition: string): string {
-  const conditionMap: Record<string, string> = {
-    new_unopened: 'New (Unopened)',
-    like_new: 'Like New',
-    gently_used: 'Gently Used',
-    used: 'Used',
-  };
-  return conditionMap[condition] || condition;
-}
+const PAGE_SIZE = 20;
 
 function SkeletonCard() {
   const shimmerValue = useRef(new Animated.Value(0.4)).current;
@@ -129,6 +159,16 @@ function SkeletonGrid() {
   );
 }
 
+function formatCondition(condition: string): string {
+  const conditionMap: Record<string, string> = {
+    new_unopened: 'New (Unopened)',
+    like_new: 'Like New',
+    gently_used: 'Gently Used',
+    used: 'Used',
+  };
+  return conditionMap[condition] || condition;
+}
+
 function ListingCard({ listing }: { listing: Listing }) {
   const router = useRouter();
   const priceFormatted = listing.price.toFixed(2);
@@ -145,6 +185,11 @@ function ListingCard({ listing }: { listing: Listing }) {
           style={styles.photo}
           resizeMode="cover"
         />
+        {listing.is_featured && (
+          <View style={styles.featuredBadge}>
+            <Text style={styles.featuredText}>Featured</Text>
+          </View>
+        )}
         <View style={styles.priceBadge}>
           <Text style={styles.priceText}>${priceFormatted}</Text>
         </View>
@@ -171,43 +216,235 @@ function ListingCard({ listing }: { listing: Listing }) {
 }
 
 export default function Shop() {
+  const { session } = useAuth();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
+  // Location
+  const [userLat, setUserLat] = useState<number | null>(null);
+  const [userLng, setUserLng] = useState<number | null>(null);
+  const [locationLabel, setLocationLabel] = useState<string>('');
+  const [locationSheetVisible, setLocationSheetVisible] = useState(false);
+  const [zipInput, setZipInput] = useState('');
+  const [zipLoading, setZipLoading] = useState(false);
+  const [zipError, setZipError] = useState('');
+  const [locationLoading, setLocationLoading] = useState(false);
+
   // Search
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const listingsLengthRef = useRef<number>(0);
+  const filterAppliedRef = useRef(false);
+
+  // Filter data loaded from DB
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryAttributes, setCategoryAttributes] = useState<CategoryAttribute[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
 
   // Filter - Active state (used by fetchListings)
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [activeSubcategory, setActiveSubcategory] = useState<string | null>(null);
+  const [activeBrand, setActiveBrand] = useState<string | null>(null);
+  const [activeAttributes, setActiveAttributes] = useState<Record<string, string>>({});
   const [activeConditions, setActiveConditions] = useState<string[]>([]);
-  const [activeMinPrice, setActiveMinPrice] = useState(0);
-  const [activeMaxPrice, setActiveMaxPrice] = useState(500);
-  const [activeRadius, setActiveRadius] = useState(80467);
+  const [activeMinPrice, setActiveMinPrice] = useState<number | null>(null);
+  const [activeMaxPrice, setActiveMaxPrice] = useState<number | null>(null);
+  const [activeRadius, setActiveRadius] = useState(40234);
 
   // Filter - Pending state (used by modal UI only)
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
+  const [pendingSubcategory, setPendingSubcategory] = useState<string | null>(null);
+  const [pendingBrand, setPendingBrand] = useState<string | null>(null);
+  const [pendingAttributes, setPendingAttributes] = useState<Record<string, string>>({});
   const [pendingConditions, setPendingConditions] = useState<string[]>([]);
-  const [pendingMinPrice, setPendingMinPrice] = useState(0);
-  const [pendingMaxPrice, setPendingMaxPrice] = useState(500);
-  const [pendingRadius, setPendingRadius] = useState(80467);
+  const [pendingMinPrice, setPendingMinPrice] = useState<number | null>(null);
+  const [pendingMaxPrice, setPendingMaxPrice] = useState<number | null>(null);
+
+  // Brand modal state
+  const [brandModalVisible, setBrandModalVisible] = useState(false);
+  const [brandSearch, setBrandSearch] = useState('');
 
   // Keep listingsLengthRef in sync with listings.length
   useEffect(() => {
     listingsLengthRef.current = listings.length;
   }, [listings]);
 
+  // Initialize location on mount
+  useEffect(() => {
+    const initializeLocation = async () => {
+      try {
+        // 1. Check AsyncStorage first
+        const storedLat = await AsyncStorage.getItem(STORAGE_KEY_LAT);
+        const storedLng = await AsyncStorage.getItem(STORAGE_KEY_LNG);
+        const storedLabel = await AsyncStorage.getItem(STORAGE_KEY_LABEL);
+        const storedRadius = await AsyncStorage.getItem(STORAGE_KEY_RADIUS);
+
+        if (storedLat && storedLng && storedLabel) {
+          setUserLat(parseFloat(storedLat));
+          setUserLng(parseFloat(storedLng));
+          setLocationLabel(storedLabel);
+          if (storedRadius) {
+            setActiveRadius(parseInt(storedRadius, 10));
+          }
+          return;
+        }
+
+        // 2. Check profile location from DB
+        if (session?.user?.id) {
+          const { data, error } = await supabase
+            .from('users')
+            .select('location_lat, location_lng, location_label')
+            .eq('id', session.user.id)
+            .single();
+
+          if (!error && data?.location_lat && data?.location_lng && data?.location_label) {
+            await saveLocation(data.location_lat, data.location_lng, data.location_label);
+            return;
+          }
+        }
+
+        // 3. No location found - leave null, empty state will prompt user
+        setLoading(false);
+      } catch (error) {
+        console.error('Error initializing location:', error);
+        setLoading(false);
+      }
+    };
+
+    initializeLocation();
+  }, [session?.user?.id]);
+
+  const saveLocation = async (
+    lat: number,
+    lng: number,
+    label: string,
+    radius?: number
+  ) => {
+    setUserLat(lat);
+    setUserLng(lng);
+    setLocationLabel(label);
+    await AsyncStorage.setItem(STORAGE_KEY_LAT, String(lat));
+    await AsyncStorage.setItem(STORAGE_KEY_LNG, String(lng));
+    await AsyncStorage.setItem(STORAGE_KEY_LABEL, label);
+    if (radius !== undefined) {
+      setActiveRadius(radius);
+      await AsyncStorage.setItem(STORAGE_KEY_RADIUS, String(radius));
+    }
+  };
+
+  const handleUseGPS = async () => {
+    setLocationLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setZipError('Location permission denied. Enter a ZIP code instead.');
+        setLocationLoading(false);
+        return;
+      }
+      const coords = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const { latitude, longitude } = coords.coords;
+      const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
+      const rawRegion = place?.region || '';
+      const abbreviatedRegion =
+        STATE_NAME_TO_ABBR[rawRegion] || rawRegion;
+      const label = place
+        ? `${place.city || place.district || ''}, ${abbreviatedRegion}`
+            .trim()
+            .replace(/^,|,$/g, '')
+        : 'Current location';
+      await saveLocation(latitude, longitude, label);
+      setLocationSheetVisible(false);
+    } catch (e) {
+      setZipError('Could not get your location. Enter a ZIP code instead.');
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const handleZipSubmit = async () => {
+    const zip = zipInput.trim();
+    if (zip.length !== 5 || isNaN(Number(zip))) {
+      setZipError('Please enter a valid 5-digit ZIP code.');
+      return;
+    }
+    setZipLoading(true);
+    setZipError('');
+    try {
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?postalcode=${zip}&country=US&format=json&limit=1`,
+        { headers: { 'User-Agent': 'Babyly/1.0' } }
+      );
+      const geoData = await geoRes.json();
+      if (!geoData || geoData.length === 0) {
+        setZipError('ZIP code not found. Please try another.');
+        setZipLoading(false);
+        return;
+      }
+      const { lat, lon, display_name } = geoData[0];
+      const latitude = parseFloat(lat);
+      const longitude = parseFloat(lon);
+      const parts = display_name.split(',').map((p: string) => p.trim());
+      const city = parts[1] || parts[0] || zip;
+      const fullStateName = parts[3] || '';
+      const state = STATE_NAME_TO_ABBR[fullStateName] || fullStateName;
+      const label = state ? `${city}, ${state}` : city;
+      await saveLocation(latitude, longitude, label);
+      setLocationSheetVisible(false);
+    } catch (e) {
+      console.error('ZIP geocoding error:', e);
+      setZipError('Could not find that ZIP code. Please try again.');
+    } finally {
+      setZipLoading(false);
+      setZipInput('');
+    }
+  };
+
+  const loadFilterData = async () => {
+    const [catResult, attrResult, brandResult] = await Promise.all([
+      supabase
+        .from('categories')
+        .select('id, parent_id, name, slug, sort_order')
+        .eq('is_active', true)
+        .order('sort_order'),
+      supabase
+        .from('category_attributes')
+        .select('category_id, attribute_key, attribute_value, sort_order')
+        .eq('is_active', true)
+        .order('sort_order'),
+      supabase
+        .from('brands')
+        .select('id, name, slug')
+        .eq('is_active', true)
+        .order('name'),
+    ]);
+    if (catResult.data) setCategories(catResult.data);
+    if (attrResult.data) setCategoryAttributes(attrResult.data);
+    if (brandResult.data) setBrands(brandResult.data);
+  };
+
+  useEffect(() => {
+    loadFilterData();
+  }, []);
+
   const fetchListings = useCallback(
     async (pageCursor?: string) => {
+      if (userLat === null || userLng === null) return;
+
       try {
-        const isInitialLoad = !pageCursor && listingsLengthRef.current === 0;
-        const isRefetch = !pageCursor && listingsLengthRef.current > 0;
+        const isInitialLoad = !pageCursor && listingsLengthRef.current === 0 && !filterAppliedRef.current;
+        const isRefetch = !pageCursor && (listingsLengthRef.current > 0 || filterAppliedRef.current);
+
+        // Reset the flag after reading it
+        if (filterAppliedRef.current) {
+          filterAppliedRef.current = false;
+        }
 
         if (isInitialLoad) {
           setLoading(true);
@@ -217,12 +454,18 @@ export default function Shop() {
           setLoadingMore(true);
         }
 
+        console.log('Fetching with brand_id:', activeBrand);
+
         const { data, error } = await supabase.rpc('get_shop_feed', {
-          user_lat: USER_LAT,
-          user_lng: USER_LNG,
-          user_id: null,
+          user_lat: userLat,
+          user_lng: userLng,
+          user_id: session?.user?.id || null,
           radius_meters: activeRadius,
-          category_slug: activeCategory,
+          category_slug: activeSubcategory || activeCategory || null,
+          brand_id: activeBrand || null,
+          attribute_filters: Object.keys(activeAttributes).length > 0
+            ? activeAttributes
+            : null,
           search_query: searchQuery || null,
           condition_filter: activeConditions.length > 0 ? activeConditions[0] : null,
           min_price: activeMinPrice,
@@ -253,7 +496,7 @@ export default function Shop() {
         setLoadingMore(false);
       }
     },
-    [searchQuery, activeCategory, activeConditions, activeMinPrice, activeMaxPrice, activeRadius]
+    [session, searchQuery, activeCategory, activeSubcategory, activeBrand, activeAttributes, activeConditions, activeMinPrice, activeMaxPrice, activeRadius, userLat, userLng]
   );
 
   useEffect(() => {
@@ -287,50 +530,79 @@ export default function Shop() {
 
   const handleResetFilters = () => {
     setPendingCategory(null);
+    setPendingSubcategory(null);
+    setPendingBrand(null);
+    setPendingAttributes({});
     setPendingConditions([]);
-    setPendingMinPrice(0);
-    setPendingMaxPrice(500);
-    setPendingRadius(80467);
+    setPendingMinPrice(null);
+    setPendingMaxPrice(null);
   };
 
-  const handleApplyFilters = () => {
+  const handleApplyFilters = async () => {
+    filterAppliedRef.current = true;
+    setListings([]);
     setActiveCategory(pendingCategory);
+    setActiveSubcategory(pendingSubcategory);
+    setActiveBrand(pendingBrand);
+    setActiveAttributes(pendingAttributes);
     setActiveConditions(pendingConditions);
     setActiveMinPrice(pendingMinPrice);
     setActiveMaxPrice(pendingMaxPrice);
-    setActiveRadius(pendingRadius);
     setFilterVisible(false);
   };
 
   const handleOpenFilter = () => {
     // Sync pending state from active state when modal opens
     setPendingCategory(activeCategory);
+    setPendingSubcategory(activeSubcategory);
+    setPendingBrand(activeBrand);
+    setPendingAttributes(activeAttributes);
     setPendingConditions(activeConditions);
     setPendingMinPrice(activeMinPrice);
     setPendingMaxPrice(activeMaxPrice);
-    setPendingRadius(activeRadius);
     setFilterVisible(true);
   };
 
   // Computed value for filter indicator
   const hasActiveFilters =
-    activeCategory !== null ||
     activeConditions.length > 0 ||
-    activeMinPrice > 0 ||
-    activeMaxPrice < 500 ||
-    activeRadius !== 80467;
+    activeMinPrice !== null ||
+    activeMaxPrice !== null ||
+    activeCategory !== null ||
+    activeSubcategory !== null ||
+    activeBrand !== null ||
+    Object.keys(activeAttributes).length > 0;
 
   const renderListingCard = ({ item }: { item: Listing }) => (
     <ListingCard listing={item} />
   );
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Ionicons name="search-outline" size={48} color="#CCCCCC" />
-      <Text style={styles.emptyStateTitle}>No listings found</Text>
-      <Text style={styles.emptyStateSubtitle}>Try adjusting your filters or search</Text>
-    </View>
-  );
+  const renderEmptyState = () => {
+    if (userLat === null) {
+      return (
+        <View style={styles.emptyState}>
+          <Ionicons name="location-outline" size={48} color="#CCCCCC" />
+          <Text style={styles.emptyStateTitle}>Where are you?</Text>
+          <Text style={styles.emptyStateSubtitle}>
+            Set your location to see listings near you
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyStateButton}
+            onPress={() => setLocationSheetVisible(true)}
+          >
+            <Text style={styles.emptyStateButtonText}>Set location</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.emptyState}>
+        <Ionicons name="search-outline" size={48} color="#CCCCCC" />
+        <Text style={styles.emptyStateTitle}>No listings found</Text>
+        <Text style={styles.emptyStateSubtitle}>Try adjusting your filters or search</Text>
+      </View>
+    );
+  };
 
   if (loading && listings.length === 0) {
     return (
@@ -348,23 +620,26 @@ export default function Shop() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Ionicons name="bag-outline" size={31} color="#A4C8D8" />
-          <Text style={styles.wordmark}>Babyly</Text>
+          <Text style={styles.wordmark}>Shop</Text>
         </View>
-        <TouchableOpacity onPress={() => {}}>
-          <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
-        </TouchableOpacity>
+        <View style={styles.headerIcons}>
+          <TouchableOpacity onPress={() => {}}>
+            <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Search Bar */}
+      {/* Persistent Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputRow}>
-          <Ionicons name="search-outline" size={18} color="#AAAAAA" />
+          <Ionicons name="search-outline" size={18} color="#999999" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search for clothes, toys..."
-            placeholderTextColor="#AAAAAA"
+            placeholder="Search listings..."
+            placeholderTextColor="#BBBBBB"
             value={searchInput}
             onChangeText={handleSearchChange}
+            returnKeyType="search"
           />
           {searchInput !== '' && (
             <TouchableOpacity
@@ -373,7 +648,7 @@ export default function Shop() {
                 setSearchQuery('');
               }}
             >
-              <Ionicons name="close-circle" size={18} color="#AAAAAA" />
+              <Ionicons name="close-circle" size={18} color="#BBBBBB" />
             </TouchableOpacity>
           )}
         </View>
@@ -381,9 +656,20 @@ export default function Shop() {
 
       {/* Location + Filter Row */}
       <View style={styles.locationFilterRow}>
-        <TouchableOpacity style={styles.locationPill} onPress={() => {}}>
+        <TouchableOpacity
+          style={styles.locationPill}
+          onPress={() => setLocationSheetVisible(true)}
+        >
           <Ionicons name="location-outline" size={15} color="#A4C8D8" />
-          <Text style={styles.locationText}>McKinney, TX • 10 mi</Text>
+          <Text style={styles.locationText}>
+            {userLat
+              ? `${locationLabel} • ${
+                  activeRadius === 8047 ? '5 mi' :
+                  activeRadius === 16093 ? '10 mi' :
+                  activeRadius === 40234 ? '25 mi' : '50 mi'
+                }`
+              : 'Set your location'}
+          </Text>
           <Ionicons name="chevron-down" size={14} color="#999999" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.filterButton} onPress={handleOpenFilter}>
@@ -424,7 +710,7 @@ export default function Shop() {
         presentationStyle="pageSheet"
         onRequestClose={() => setFilterVisible(false)}
       >
-        <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
+        <SafeAreaView style={styles.modalContainer} edges={['top']}>
           {/* Modal Header */}
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={handleResetFilters}>
@@ -436,77 +722,161 @@ export default function Shop() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView>
-            {/* Category Section */}
-            <Text style={styles.sectionLabel}>CATEGORY</Text>
-            <View style={styles.categoryRow}>
-              {CATEGORIES.map((category) => {
-                const isSelected = category.slug === pendingCategory;
+          <ScrollView style={styles.filterScroll} keyboardShouldPersistTaps="handled">
+            {/* CATEGORY SECTION */}
+            <Text style={styles.filterSectionLabel}>CATEGORY</Text>
+            <View style={styles.filterChipsRow}>
+              {categories
+                .filter(c => c.parent_id === null)
+                .map(cat => {
+                  const isSelected = pendingCategory === cat.slug;
+                  return (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+                      onPress={() => {
+                        if (isSelected) {
+                          setPendingCategory(null);
+                          setPendingSubcategory(null);
+                          setPendingAttributes({});
+                        } else {
+                          setPendingCategory(cat.slug);
+                          setPendingSubcategory(null);
+                          setPendingAttributes({});
+                        }
+                      }}
+                    >
+                      <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
+                        {cat.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+            </View>
+
+            {/* SUBCATEGORY — only shown when Gear is selected */}
+            {pendingCategory === 'gear' && (
+              <>
+                <Text style={styles.filterSectionLabel}>TYPE</Text>
+                <View style={styles.filterChipsRow}>
+                  {categories
+                    .filter(c => {
+                      const gearCat = categories.find(g => g.slug === 'gear');
+                      return c.parent_id === gearCat?.id;
+                    })
+                    .map(sub => {
+                      const isSelected = pendingSubcategory === sub.slug;
+                      return (
+                        <TouchableOpacity
+                          key={sub.id}
+                          style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+                          onPress={() => {
+                            if (isSelected) {
+                              setPendingSubcategory(null);
+                              setPendingAttributes({});
+                            } else {
+                              setPendingSubcategory(sub.slug);
+                              setPendingAttributes({});
+                            }
+                          }}
+                        >
+                          <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
+                            {sub.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              </>
+            )}
+
+            {/* DYNAMIC ATTRIBUTES — shown when a category with attributes is selected */}
+            {(() => {
+              if (!pendingCategory) return null;
+              const selectedCat = pendingSubcategory
+                ? categories.find(c => c.slug === pendingSubcategory)
+                : categories.find(c => c.slug === pendingCategory);
+              if (!selectedCat) return null;
+              const attrs = categoryAttributes.filter(a => a.category_id === selectedCat.id);
+              const attributeKeys = [...new Set(attrs.map(a => a.attribute_key))];
+              if (attributeKeys.length === 0) return null;
+
+              return attributeKeys.map(key => (
+                <View key={key}>
+                  <Text style={styles.filterSectionLabel}>
+                    {key.toUpperCase().replace(/_/g, ' ')}
+                  </Text>
+                  <View style={styles.filterChipsRow}>
+                    {attrs
+                      .filter(a => a.attribute_key === key)
+                      .map(attr => {
+                        const isSelected = pendingAttributes[key] === attr.attribute_value;
+                        return (
+                          <TouchableOpacity
+                            key={attr.attribute_value}
+                            style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+                            onPress={() => {
+                              setPendingAttributes(prev => {
+                                if (isSelected) {
+                                  const next = { ...prev };
+                                  delete next[key];
+                                  return next;
+                                }
+                                return { ...prev, [key]: attr.attribute_value };
+                              });
+                            }}
+                          >
+                            <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
+                              {attr.attribute_value}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </View>
+                  <View style={styles.filterDivider} />
+                </View>
+              ));
+            })()}
+
+            <View style={styles.filterDivider} />
+
+            {/* CONDITION SECTION */}
+            <Text style={styles.filterSectionLabel}>CONDITION</Text>
+            <View style={styles.filterChipsRow}>
+              {CONDITIONS.map(condition => {
+                const isSelected = pendingConditions.includes(condition.value);
                 return (
                   <TouchableOpacity
-                    key={category.slug || 'all'}
-                    style={[
-                      styles.categoryPill,
-                      isSelected && styles.categoryPillSelected,
-                    ]}
-                    onPress={() => setPendingCategory(category.slug)}
+                    key={condition.value}
+                    style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+                    onPress={() => handleConditionToggle(condition.value)}
                   >
-                    <Text
-                      style={[
-                        styles.categoryPillText,
-                        isSelected && styles.categoryPillTextSelected,
-                      ]}
-                    >
-                      {category.label}
+                    <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
+                      {condition.label}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
 
-            <View style={styles.divider} />
+            <View style={styles.filterDivider} />
 
-            {/* Condition Section */}
-            <Text style={styles.sectionLabel}>CONDITION</Text>
-            {CONDITIONS.map((condition) => {
-              const isSelected = pendingConditions.includes(condition.value);
-              return (
-                <TouchableOpacity
-                  key={condition.value}
-                  style={styles.conditionRow}
-                  onPress={() => handleConditionToggle(condition.value)}
-                >
-                  <Text style={styles.conditionLabel}>{condition.label}</Text>
-                  <View
-                    style={[
-                      styles.checkbox,
-                      isSelected && styles.checkboxSelected,
-                    ]}
-                  >
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={14} color="#ffffff" />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-
-            <View style={styles.divider} />
-
-            {/* Price Range Section */}
+            {/* PRICE RANGE */}
             <View style={styles.priceHeader}>
-              <Text style={styles.sectionLabel}>PRICE RANGE</Text>
-              <Text style={styles.priceRange}>
-                ${pendingMinPrice} — ${pendingMaxPrice}
-              </Text>
+              <Text style={styles.filterSectionLabel}>PRICE RANGE</Text>
             </View>
             <View style={styles.priceInputRow}>
               <View style={styles.priceInputContainer}>
                 <Text style={styles.priceInputLabel}>Min</Text>
                 <TextInput
                   style={styles.priceInput}
-                  value={pendingMinPrice.toString()}
-                  onChangeText={(text) => setPendingMinPrice(Number(text) || 0)}
+                  placeholder="0"
+                  placeholderTextColor="#CCCCCC"
+                  value={pendingMinPrice?.toString() || ''}
+                  onChangeText={(text) => {
+                    const val = parseFloat(text);
+                    setPendingMinPrice(isNaN(val) || text === '' ? null : val);
+                  }}
                   keyboardType="numeric"
                 />
               </View>
@@ -514,20 +884,230 @@ export default function Shop() {
                 <Text style={styles.priceInputLabel}>Max</Text>
                 <TextInput
                   style={styles.priceInput}
-                  value={pendingMaxPrice.toString()}
-                  onChangeText={(text) => setPendingMaxPrice(Number(text) || 0)}
+                  placeholder="Any"
+                  placeholderTextColor="#CCCCCC"
+                  value={pendingMaxPrice?.toString() || ''}
+                  onChangeText={(text) => {
+                    const val = parseFloat(text);
+                    setPendingMaxPrice(isNaN(val) || text === '' ? null : val);
+                  }}
                   keyboardType="numeric"
                 />
               </View>
             </View>
 
-            <View style={styles.divider} />
+            <View style={styles.filterDivider} />
 
-            {/* Distance Section */}
-            <Text style={styles.sectionLabel}>DISTANCE</Text>
+            {/* BRAND SECTION */}
+            <Text style={styles.filterSectionLabel}>BRAND</Text>
+            <TouchableOpacity
+              style={styles.brandPickerRow}
+              onPress={() => setBrandModalVisible(true)}
+            >
+              <Text style={[
+                styles.brandPickerText,
+                pendingBrand && styles.brandPickerTextSelected
+              ]}>
+                {pendingBrand
+                  ? brands.find(b => b.id === pendingBrand)?.name || 'Select brand'
+                  : 'Any brand'}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#999999" />
+            </TouchableOpacity>
+            {pendingBrand && (
+              <TouchableOpacity onPress={() => setPendingBrand(null)}>
+                <Text style={styles.clearBrandText}>Clear brand</Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+
+          {/* Show Results Button */}
+          <TouchableOpacity
+            style={styles.showResultsButton}
+            onPress={handleApplyFilters}
+          >
+            <Text style={styles.showResultsText}>Show Results</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+
+        {/* Brand picker modal — nested inside filter modal */}
+        <Modal
+          visible={brandModalVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setBrandModalVisible(false)}
+        >
+          <SafeAreaView style={styles.brandModalContainer}>
+            <View style={styles.brandModalHeader}>
+              <Text style={styles.brandModalTitle}>Select a brand</Text>
+              <TouchableOpacity onPress={() => {
+                setBrandModalVisible(false);
+                setBrandSearch('');
+              }}>
+                <Ionicons name="close" size={24} color="#1A1A1A" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.brandSearchContainer}>
+              <Ionicons name="search-outline" size={20} color="#999999" />
+              <TextInput
+                style={styles.brandSearchInput}
+                placeholder="Search brands..."
+                placeholderTextColor="#CCCCCC"
+                value={brandSearch}
+                onChangeText={setBrandSearch}
+                autoFocus
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {brandSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setBrandSearch('')}>
+                  <Ionicons name="close-circle" size={20} color="#999999" />
+                </TouchableOpacity>
+              )}
+            </View>
+            {pendingBrand && (
+              <TouchableOpacity
+                style={styles.brandClearRow}
+                onPress={() => {
+                  setPendingBrand(null);
+                  setBrandModalVisible(false);
+                  setBrandSearch('');
+                }}
+              >
+                <Text style={styles.brandClearText}>Clear selection</Text>
+              </TouchableOpacity>
+            )}
+            <FlatList
+              data={brands.filter(b =>
+                b.slug !== 'other' &&
+                (brandSearch.trim().length === 0 ||
+                  b.name.toLowerCase().includes(brandSearch.toLowerCase()))
+              )}
+              keyExtractor={item => item.id}
+              keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={() => {
+                const other = brands.find(b => b.slug === 'other');
+                if (!other) return null;
+                return (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.brandRow, pendingBrand === other.id && styles.brandRowSelected]}
+                      onPress={() => {
+                        setPendingBrand(other.id);
+                        setBrandModalVisible(false);
+                        setBrandSearch('');
+                      }}
+                    >
+                      <Text style={styles.brandRowText}>Other</Text>
+                      {pendingBrand === other.id && (
+                        <Ionicons name="checkmark" size={20} color="#A4C8D8" />
+                      )}
+                    </TouchableOpacity>
+                    <View style={styles.brandDivider} />
+                  </>
+                );
+              }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.brandRow, pendingBrand === item.id && styles.brandRowSelected]}
+                  onPress={() => {
+                    setPendingBrand(item.id);
+                    setBrandModalVisible(false);
+                    setBrandSearch('');
+                  }}
+                >
+                  <Text style={styles.brandRowText}>{item.name}</Text>
+                  {pendingBrand === item.id && (
+                    <Ionicons name="checkmark" size={20} color="#A4C8D8" />
+                  )}
+                </TouchableOpacity>
+              )}
+              ItemSeparatorComponent={() => <View style={styles.brandDivider} />}
+            />
+          </SafeAreaView>
+        </Modal>
+      </Modal>
+
+      {/* Location Sheet Modal */}
+      <Modal
+        visible={locationSheetVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setLocationSheetVisible(false)}
+      >
+        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+          <View style={styles.modalHeader}>
+            <View style={{ width: 60 }} />
+            <Text style={styles.modalTitle}>Location</Text>
+            <TouchableOpacity onPress={() => setLocationSheetVisible(false)}>
+              <Ionicons name="close" size={24} color="#1A1A1A" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.filterScroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* GPS OPTION */}
+            <Text style={styles.filterSectionLabel}>USE DEVICE LOCATION</Text>
+            <TouchableOpacity
+              style={styles.gpsButton}
+              onPress={handleUseGPS}
+              disabled={locationLoading}
+            >
+              {locationLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="navigate" size={18} color="#FFFFFF" />
+                  <Text style={styles.gpsButtonText}>Use my current location</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.filterDivider} />
+
+            {/* ZIP CODE OPTION */}
+            <Text style={styles.filterSectionLabel}>OR ENTER A ZIP CODE</Text>
+            <View style={styles.zipInputRow}>
+              <TextInput
+                style={styles.zipInput}
+                placeholder="e.g. 75069"
+                placeholderTextColor="#BBBBBB"
+                value={zipInput}
+                onChangeText={(t) => { setZipInput(t); setZipError(''); }}
+                keyboardType="number-pad"
+                maxLength={5}
+                returnKeyType="done"
+                onSubmitEditing={handleZipSubmit}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.zipSubmitButton,
+                  (zipLoading || zipInput.length !== 5) &&
+                    styles.zipSubmitButtonDisabled,
+                ]}
+                onPress={handleZipSubmit}
+                disabled={zipLoading || zipInput.length !== 5}
+              >
+                {zipLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.zipSubmitText}>Go</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            {zipError ? (
+              <Text style={styles.zipError}>{zipError}</Text>
+            ) : null}
+
+            <View style={styles.filterDivider} />
+
+            {/* RADIUS */}
+            <Text style={styles.filterSectionLabel}>DISTANCE</Text>
             <View style={styles.radiusRow}>
-              {RADIUS_OPTIONS.map((option) => {
-                const isSelected = pendingRadius === option.meters;
+              {RADIUS_OPTIONS.map(option => {
+                const isSelected = activeRadius === option.meters;
                 return (
                   <TouchableOpacity
                     key={option.meters}
@@ -535,7 +1115,14 @@ export default function Shop() {
                       styles.radiusPill,
                       isSelected && styles.radiusPillSelected,
                     ]}
-                    onPress={() => setPendingRadius(option.meters)}
+                    onPress={async () => {
+                      setActiveRadius(option.meters);
+                      await AsyncStorage.setItem(
+                        STORAGE_KEY_RADIUS,
+                        String(option.meters)
+                      );
+                      setLocationSheetVisible(false);
+                    }}
                   >
                     <Text
                       style={[
@@ -550,14 +1137,6 @@ export default function Shop() {
               })}
             </View>
           </ScrollView>
-
-          {/* Show Results Button */}
-          <TouchableOpacity
-            style={styles.showResultsButton}
-            onPress={handleApplyFilters}
-          >
-            <Text style={styles.showResultsText}>Show Results</Text>
-          </TouchableOpacity>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
@@ -593,6 +1172,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Quicksand_700Bold',
     fontSize: 28,
     color: '#A4C8D8',
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    gap: 12,
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -725,6 +1308,20 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  featuredBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: '#A4C8D8',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  featuredText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
   priceBadge: {
     position: 'absolute',
     bottom: 8,
@@ -801,6 +1398,18 @@ const styles = StyleSheet.create({
     color: '#999999',
     marginTop: 8,
   },
+  emptyStateButton: {
+    marginTop: 16,
+    backgroundColor: '#A4C8D8',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  emptyStateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   modalContainer: {
     flex: 1,
     backgroundColor: '#ffffff',
@@ -823,71 +1432,49 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1A1A1A',
   },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    letterSpacing: 0.5,
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 12,
+  filterScroll: {
+    flex: 1,
   },
-  categoryRow: {
+  filterSectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999999',
+    letterSpacing: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  filterChipsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 16,
     gap: 8,
-    paddingBottom: 20,
   },
-  categoryPill: {
-    backgroundColor: 'transparent',
-    borderColor: '#E0E0E0',
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 16,
+  filterChip: {
+    paddingHorizontal: 14,
     paddingVertical: 8,
-  },
-  categoryPillSelected: {
-    backgroundColor: '#A4C8D8',
-    borderColor: '#A4C8D8',
-  },
-  categoryPillText: {
-    fontSize: 14,
-    color: '#666666',
-  },
-  categoryPillTextSelected: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  conditionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  conditionLabel: {
-    fontSize: 15,
-    color: '#1A1A1A',
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
+    borderRadius: 20,
+    borderWidth: 1,
     borderColor: '#E0E0E0',
     backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  checkboxSelected: {
+  filterChipSelected: {
     borderColor: '#A4C8D8',
-    backgroundColor: '#A4C8D8',
+    backgroundColor: '#F0F7FA',
   },
-  divider: {
-    height: 0.5,
+  filterChipText: {
+    fontSize: 14,
+    color: '#1A1A1A',
+  },
+  filterChipTextSelected: {
+    color: '#A4C8D8',
+    fontWeight: '600',
+  },
+  filterDivider: {
+    height: 1,
     backgroundColor: '#F0F0F0',
-    marginTop: 12,
+    marginTop: 16,
+    marginHorizontal: 20,
   },
   priceHeader: {
     flexDirection: 'row',
@@ -895,16 +1482,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
   },
-  priceRange: {
-    fontSize: 14,
-    color: '#666666',
-    paddingTop: 20,
-    paddingBottom: 12,
-  },
   priceInputRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     gap: 12,
+    paddingBottom: 20,
   },
   priceInputContainer: {
     flex: 1,
@@ -921,6 +1503,93 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
     color: '#1A1A1A',
+  },
+  brandPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 20,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  brandPickerText: {
+    fontSize: 15,
+    color: '#CCCCCC',
+  },
+  brandPickerTextSelected: {
+    color: '#1A1A1A',
+  },
+  clearBrandText: {
+    fontSize: 13,
+    color: '#A4C8D8',
+    marginHorizontal: 20,
+    marginTop: 8,
+  },
+  brandModalContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  brandModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  brandModalTitle: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  brandSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: 16,
+    paddingHorizontal: 12,
+    height: 44,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    gap: 8,
+  },
+  brandSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1A1A1A',
+  },
+  brandClearRow: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#F8F8F8',
+  },
+  brandClearText: {
+    fontSize: 14,
+    color: '#E53935',
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  brandRowSelected: {
+    backgroundColor: '#F0F7FA',
+  },
+  brandRowText: {
+    fontSize: 16,
+    color: '#1A1A1A',
+  },
+  brandDivider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginHorizontal: 24,
   },
   radiusRow: {
     flexDirection: 'row',
@@ -961,5 +1630,61 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
     textAlign: 'center',
+  },
+  gpsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#A4C8D8',
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  gpsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  zipInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 4,
+  },
+  zipInput: {
+    flex: 1,
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#1A1A1A',
+    backgroundColor: '#FAFAFA',
+  },
+  zipSubmitButton: {
+    backgroundColor: '#A4C8D8',
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zipSubmitButtonDisabled: {
+    backgroundColor: '#CCCCCC',
+  },
+  zipSubmitText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  zipError: {
+    color: '#E05555',
+    fontSize: 13,
+    marginHorizontal: 16,
+    marginTop: 4,
   },
 });

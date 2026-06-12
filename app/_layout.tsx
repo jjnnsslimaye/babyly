@@ -95,6 +95,7 @@ export default function RootLayout() {
   return (
     <AuthContext.Provider value={{ session, loadingSession }}>
       <Stack>
+        <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="login"
@@ -106,6 +107,7 @@ export default function RootLayout() {
         <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
         <Stack.Screen name="account-setup" options={{ headerShown: false }} />
         <Stack.Screen name="personalize" options={{ headerShown: false }} />
+        <Stack.Screen name="location-setup" options={{ headerShown: false }} />
       </Stack>
     </AuthContext.Provider>
   );
