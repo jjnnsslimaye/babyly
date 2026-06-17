@@ -224,9 +224,26 @@ export default function Sell() {
       } else {
         setCurrentStep(3);
       }
+    } else if (currentStep === 6) {
+      const selectedCategory = categories.find(c => c.id === form.categoryId);
+      if (selectedCategory?.slug === 'gear' && form.subcategoryId) {
+        setCurrentStep(4);
+      } else {
+        setCurrentStep(3);
+      }
+    } else if (currentStep === 8) {
+      if (hasAttributes) {
+        setCurrentStep(7);
+      } else {
+        setCurrentStep(6);
+      }
     } else if (currentStep === 9) {
       if (form.listingType === 'buy_nothing') {
-        setCurrentStep(7);
+        if (hasAttributes) {
+          setCurrentStep(7);
+        } else {
+          setCurrentStep(6);
+        }
       } else {
         setCurrentStep(8);
       }
@@ -246,7 +263,13 @@ export default function Sell() {
     } else if (currentStep === 4) {
       setCurrentStep(5);
     } else if (currentStep === 6) {
-      setCurrentStep(7);
+      if (hasAttributes) {
+        setCurrentStep(7);
+      } else if (form.listingType === 'buy_nothing') {
+        setCurrentStep(9);
+      } else {
+        setCurrentStep(8);
+      }
     } else if (currentStep === 7) {
       if (form.listingType === 'buy_nothing') {
         setCurrentStep(9);
@@ -645,6 +668,7 @@ export default function Sell() {
         attributesByKey[attr.attribute_key].push(attr);
       });
   }
+  const hasAttributes = Object.keys(attributesByKey).length > 0;
 
   const filteredBrands = brandSearch.trim().length > 0
     ? brands.filter(b => b.name.toLowerCase().includes(brandSearch.toLowerCase()))

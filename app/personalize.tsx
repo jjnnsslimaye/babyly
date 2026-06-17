@@ -48,6 +48,11 @@ export default function Personalize() {
   const [communityAnswer, setCommunityAnswer] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [question, setQuestion] = useState<{
+    question_key: string;
+    prompt_text: string;
+  } | null>(null);
+  const [loadingQuestion, setLoadingQuestion] = useState(true);
 
   const { googleFirstName, googleLastName } = useLocalSearchParams<{
     googleFirstName?: string;
@@ -65,6 +70,37 @@ export default function Personalize() {
       () => true
     );
     return () => backHandler.remove();
+  }, []);
+
+  useEffect(() => {
+    const fetchQuestion = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profile_questions')
+          .select('question_key, prompt_text')
+          .eq('is_active', true)
+          .order('sort_order');
+        if (error || !data || data.length === 0) {
+          // Fall back to default if fetch fails
+          setQuestion({
+            question_key: 'baby_item',
+            prompt_text: "What baby item can't you live without?",
+          });
+          return;
+        }
+        // Pick a random question from the active list
+        const random = data[Math.floor(Math.random() * data.length)];
+        setQuestion(random);
+      } catch {
+        setQuestion({
+          question_key: 'baby_item',
+          prompt_text: "What baby item can't you live without?",
+        });
+      } finally {
+        setLoadingQuestion(false);
+      }
+    };
+    fetchQuestion();
   }, []);
 
   const handlePickImage = async () => {
@@ -210,10 +246,8 @@ export default function Personalize() {
       }
 
       // Community answer (only if communityAnswer is not empty)
-      if (communityAnswer.trim()) {
-        updates.bio = JSON.stringify({
-          what_baby_item_cant_you_live_without: communityAnswer.trim()
-        });
+      if (communityAnswer.trim() && question) {
+        updates.bio = { [question.question_key]: communityAnswer.trim() };
       }
 
       // Set profile as completed
@@ -350,23 +384,33 @@ export default function Personalize() {
             <Ionicons name="chatbubble-outline" size={16} color="#A4C8D8" />
             <Text style={styles.communityHeaderText}>COMMUNITY QUESTION</Text>
           </View>
-          <Text style={styles.questionText}>
-            What baby item can you not live without?
-          </Text>
-          <TextInput
-            style={styles.communityInput}
-            placeholder="e.g. My white noise machine!"
-            placeholderTextColor="#CCCCCC"
-            value={communityAnswer}
-            onChangeText={(text) => {
-              setCommunityAnswer(text);
-              if (error) setError('');
-            }}
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-            editable={!loading}
-          />
+          {loadingQuestion ? (
+            <ActivityIndicator
+              size="small"
+              color="#A4C8D8"
+              style={{ marginVertical: 12 }}
+            />
+          ) : (
+            <>
+              <Text style={styles.questionText}>
+                {question?.prompt_text ?? "What baby item can't you live without?"}
+              </Text>
+              <TextInput
+                style={styles.communityInput}
+                placeholder="Share your answer..."
+                placeholderTextColor="#CCCCCC"
+                value={communityAnswer}
+                onChangeText={(text) => {
+                  setCommunityAnswer(text);
+                  if (error) setError('');
+                }}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                editable={!loading}
+              />
+            </>
+          )}
         </View>
 
         {/* Error Message */}

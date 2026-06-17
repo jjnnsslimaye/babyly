@@ -14,11 +14,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../_layout';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { consumeLikeUpdate } from '../../lib/likeStore';
 
 const STATE_NAME_TO_ABBR: Record<string, string> = {
   'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ',
@@ -50,6 +51,9 @@ type Listing = {
   created_at: string;
   is_featured?: boolean;
   condition: string;
+  is_liked: boolean;
+  seller_id: string;
+  like_count: number;
 };
 
 type Category = {
@@ -169,7 +173,15 @@ function formatCondition(condition: string): string {
   return conditionMap[condition] || condition;
 }
 
-function ListingCard({ listing }: { listing: Listing }) {
+function ListingCard({
+  listing,
+  session,
+  onToggleLike,
+}: {
+  listing: Listing;
+  session: any;
+  onToggleLike: (id: string, isLiked: boolean, likeCount: number) => void;
+}) {
   const router = useRouter();
   const priceFormatted = listing.price.toFixed(2);
   const distanceMiles = (listing.distance_meters / 1609.34).toFixed(1);
@@ -193,9 +205,20 @@ function ListingCard({ listing }: { listing: Listing }) {
         <View style={styles.priceBadge}>
           <Text style={styles.priceText}>${priceFormatted}</Text>
         </View>
-        <View style={styles.heartButton}>
-          <Ionicons name="heart-outline" size={18} color="#CCCCCC" />
-        </View>
+        {(!session?.user?.id || session.user.id !== listing.seller_id) && (
+          <TouchableOpacity
+            style={styles.heartButton}
+            onPress={() =>
+              onToggleLike(listing.id, listing.is_liked, listing.like_count)
+            }
+          >
+            <Ionicons
+              name={listing.is_liked ? 'heart' : 'heart-outline'}
+              size={18}
+              color={listing.is_liked ? '#FF5A5F' : '#CCCCCC'}
+            />
+          </TouchableOpacity>
+        )}
       </View>
       <View style={styles.cardBody}>
         <Text style={styles.listingTitle} numberOfLines={1}>
@@ -217,6 +240,7 @@ function ListingCard({ listing }: { listing: Listing }) {
 
 export default function Shop() {
   const { session } = useAuth();
+  const router = useRouter();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -294,21 +318,7 @@ export default function Shop() {
           return;
         }
 
-        // 2. Check profile location from DB
-        if (session?.user?.id) {
-          const { data, error } = await supabase
-            .from('users')
-            .select('location_lat, location_lng, location_label')
-            .eq('id', session.user.id)
-            .single();
-
-          if (!error && data?.location_lat && data?.location_lng && data?.location_label) {
-            await saveLocation(data.location_lat, data.location_lng, data.location_label);
-            return;
-          }
-        }
-
-        // 3. No location found - leave null, empty state will prompt user
+        // 2. No location found - leave null, empty state will prompt user
         setLoading(false);
       } catch (error) {
         console.error('Error initializing location:', error);
@@ -503,6 +513,77 @@ export default function Shop() {
     fetchListings();
   }, [fetchListings]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const update = consumeLikeUpdate();
+      if (update && update.listingType === 'listing') {
+        setListings(prev =>
+          prev.map(l =>
+            l.id === update.listingId
+              ? { ...l, is_liked: update.isLiked, like_count: update.likeCount }
+              : l
+          )
+        );
+      }
+    }, [])
+  );
+
+  const handleToggleLike = async (
+    listingId: string,
+    currentIsLiked: boolean,
+    currentLikeCount: number
+  ) => {
+    if (!session?.user?.id) {
+      router.push('/login');
+      return;
+    }
+
+    const desiredLiked = !currentIsLiked;
+
+    // Optimistic update
+    setListings(prev =>
+      prev.map(l =>
+        l.id === listingId
+          ? {
+              ...l,
+              is_liked: desiredLiked,
+              like_count: currentLikeCount + (desiredLiked ? 1 : -1),
+            }
+          : l
+      )
+    );
+
+    const { data, error } = await supabase.rpc('set_listing_like', {
+      p_user_id: session.user.id,
+      p_listing_id: listingId,
+      p_listing_type: 'listing',
+      p_liked: desiredLiked,
+    });
+
+    if (error || !data || data.length === 0) {
+      console.error('Error setting like:', error);
+      // Revert on failure
+      setListings(prev =>
+        prev.map(l =>
+          l.id === listingId
+            ? { ...l, is_liked: currentIsLiked, like_count: currentLikeCount }
+            : l
+        )
+      );
+      return;
+    }
+
+    // Reconcile from authoritative DB response
+    const { is_liked, like_count } = data[0];
+    setListings(prev =>
+      prev.map(l =>
+        l.id === listingId
+          ? { ...l, is_liked, like_count }
+          : l
+      )
+    );
+  };
+
   const handleLoadMore = () => {
     if (loadingMore || !hasMore || listings.length === 0) return;
 
@@ -574,7 +655,11 @@ export default function Shop() {
     Object.keys(activeAttributes).length > 0;
 
   const renderListingCard = ({ item }: { item: Listing }) => (
-    <ListingCard listing={item} />
+    <ListingCard
+      listing={item}
+      session={session}
+      onToggleLike={handleToggleLike}
+    />
   );
 
   const renderEmptyState = () => {
@@ -710,7 +795,7 @@ export default function Shop() {
         presentationStyle="pageSheet"
         onRequestClose={() => setFilterVisible(false)}
       >
-        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+        <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
           {/* Modal Header */}
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={handleResetFilters}>

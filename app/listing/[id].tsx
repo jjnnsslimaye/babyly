@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAuth } from '../_layout';
+import { setLikeUpdate } from '../../lib/likeStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CAROUSEL_HEIGHT = SCREEN_WIDTH * 1.0;
@@ -159,7 +160,7 @@ export default function ListingDetail() {
 
   useEffect(() => {
     fetchListing();
-  }, [id]);
+  }, [id, session?.user?.id]);
 
   const fetchListing = async () => {
     try {
@@ -169,7 +170,7 @@ export default function ListingDetail() {
       if (isBuyNothing) {
         const { data, error: fetchError } = await supabase.rpc('get_buy_nothing_detail', {
           p_listing_id: id,
-          p_user_id: null,
+          p_user_id: session?.user?.id || null,
         });
 
         if (fetchError || !data) {
@@ -181,7 +182,7 @@ export default function ListingDetail() {
       } else {
         const { data, error: fetchError } = await supabase.rpc('get_listing_detail', {
           p_listing_id: id,
-          p_user_id: null,
+          p_user_id: session?.user?.id || null,
         });
 
         if (fetchError || !data) {
@@ -219,6 +220,72 @@ export default function ListingDetail() {
       'Thank you for helping keep Babyly safe. Our team will review this listing.',
       [{ text: 'OK' }]
     );
+  };
+
+  const handleToggleLike = async () => {
+    if (!listing) return;
+
+    if (!session?.user?.id) {
+      router.push('/login');
+      return;
+    }
+
+    if (isOwnListing) return;
+
+    const listingType = listing.kind === 'listing' ? 'listing' : 'buy_nothing';
+    const currentIsLiked = listing.is_liked;
+    const currentLikeCount = listing.kind === 'listing' ? listing.like_count : 0;
+    const desiredLiked = !currentIsLiked;
+
+    // Optimistic update
+    setListing(prev => {
+      if (!prev) return prev;
+      const updated: any = { ...prev, is_liked: desiredLiked };
+      if (prev.kind === 'listing') {
+        updated.like_count = currentLikeCount + (desiredLiked ? 1 : -1);
+      }
+      return updated;
+    });
+
+    const { data, error } = await supabase.rpc('set_listing_like', {
+      p_user_id: session.user.id,
+      p_listing_id: listing.id,
+      p_listing_type: listingType,
+      p_liked: desiredLiked,
+    });
+
+    if (error || !data || data.length === 0) {
+      console.error('Error setting like:', error);
+      // Revert on failure
+      setListing(prev => {
+        if (!prev) return prev;
+        const reverted: any = { ...prev, is_liked: currentIsLiked };
+        if (prev.kind === 'listing') {
+          reverted.like_count = currentLikeCount;
+        }
+        return reverted;
+      });
+      return;
+    }
+
+    // Reconcile from authoritative DB response
+    const { is_liked, like_count } = data[0];
+    setListing(prev => {
+      if (!prev) return prev;
+      const reconciled: any = { ...prev, is_liked };
+      if (prev.kind === 'listing') {
+        reconciled.like_count = like_count;
+      }
+      return reconciled;
+    });
+
+    // Write to store so Shop/Free can reconcile on focus
+    setLikeUpdate({
+      listingId: listing.id,
+      listingType: listingType,
+      isLiked: is_liked,
+      likeCount: like_count,
+    });
   };
 
   if (loading) {
@@ -304,12 +371,18 @@ export default function ListingDetail() {
         </TouchableOpacity>
 
         {/* Floating Heart Button */}
-        <TouchableOpacity
-          style={[styles.floatingButton, styles.floatingHeartButton, { top: insets.top }]}
-          onPress={() => {}}
-        >
-          <Ionicons name="heart-outline" size={20} color="#CCCCCC" />
-        </TouchableOpacity>
+        {!isOwnListing && (
+          <TouchableOpacity
+            style={[styles.floatingButton, styles.floatingHeartButton, { top: insets.top }]}
+            onPress={handleToggleLike}
+          >
+            <Ionicons
+              name={listing.is_liked ? 'heart' : 'heart-outline'}
+              size={20}
+              color={listing.is_liked ? '#FF5A5F' : '#CCCCCC'}
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Scrollable Content */}
