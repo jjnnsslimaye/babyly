@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import ActionSheet, { ActionSheetOption } from '../components/ActionSheet';
 
 const US_STATE_ABBREVIATIONS: Record<string, string> = {
   'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR',
@@ -53,6 +54,10 @@ export default function Personalize() {
     prompt_text: string;
   } | null>(null);
   const [loadingQuestion, setLoadingQuestion] = useState(true);
+  const [avatarSheet, setAvatarSheet] = useState<{
+    visible: boolean;
+    options: ActionSheetOption[];
+  }>({ visible: false, options: [] });
 
   const { googleFirstName, googleLastName } = useLocalSearchParams<{
     googleFirstName?: string;
@@ -104,56 +109,61 @@ export default function Personalize() {
   }, []);
 
   const handlePickImage = async () => {
-    Alert.alert(
-      'Profile Photo',
-      'Choose how to add your photo',
-      [
-        {
-          text: 'Take Photo',
-          onPress: async () => {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') {
-              setError('Camera permission is required to take a photo.');
-              return;
-            }
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.8,
-            });
-            if (!result.canceled) {
-              setAvatarUri(result.assets[0].uri);
-              if (error) setError('');
-            }
-          },
+    const sheetOptions: ActionSheetOption[] = [
+      {
+        label: 'Take Photo',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            setError('Camera permission is required to take a photo.');
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled) {
+            setAvatarUri(result.assets[0].uri);
+            if (error) setError('');
+          }
         },
-        {
-          text: 'Choose from Library',
-          onPress: async () => {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
-              setError('Permission to access photos is required.');
-              return;
-            }
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.8,
-            });
-            if (!result.canceled) {
-              setAvatarUri(result.assets[0].uri);
-              if (error) setError('');
-            }
-          },
+      },
+      {
+        label: 'Choose from Library',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            setError('Permission to access photos is required.');
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled) {
+            setAvatarUri(result.assets[0].uri);
+            if (error) setError('');
+          }
         },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ]
-    );
+      },
+      ...(avatarUri
+        ? [
+            {
+              label: 'Remove Photo',
+              destructive: true,
+              onPress: () => {
+                setAvatarUri(null);
+              },
+            },
+          ]
+        : []),
+    ];
+
+    setAvatarSheet({ visible: true, options: sheetOptions });
   };
 
   const handleFinishProfile = async () => {
@@ -429,6 +439,14 @@ export default function Personalize() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      <ActionSheet
+        visible={avatarSheet.visible}
+        title="Profile Photo"
+        options={avatarSheet.options}
+        showCancel
+        onClose={() => setAvatarSheet((prev) => ({ ...prev, visible: false }))}
+      />
     </KeyboardAvoidingView>
   );
 }

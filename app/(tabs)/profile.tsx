@@ -190,8 +190,8 @@ function SwipeableRow({
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 10 &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        return Math.abs(gestureState.dx) > 20 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
       },
       onPanResponderMove: (_, gestureState) => {
         const newX = isOpen.current
@@ -311,6 +311,7 @@ const swipeStyles = StyleSheet.create({
 export default function Profile() {
   const router = useRouter();
   const { session, loadingSession } = useAuth();
+  const isEmailUser = session?.user?.app_metadata?.provider === 'email';
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [favoritesCount, setFavoritesCount] = useState(0);
@@ -344,7 +345,8 @@ export default function Profile() {
     visible: boolean;
     title: string;
     options: ActionSheetOption[];
-  }>({ visible: false, title: '', options: [] });
+    showCancel?: boolean;
+  }>({ visible: false, title: '', options: [], showCancel: false });
 
   const listingsFetched = useRef(false);
   const favoritesFetched = useRef(false);
@@ -641,7 +643,17 @@ export default function Profile() {
       { text: 'Cancel', style: 'cancel' as const },
     ];
 
-    Alert.alert('Profile Photo', 'Choose an option', options);
+    setActionSheet({
+      visible: true,
+      title: 'Profile Photo',
+      options: options
+        .filter((o) => o.style !== 'cancel')
+        .map((o) => ({
+          label: o.text,
+          destructive: o.style === 'destructive',
+          onPress: o.onPress ?? (() => {}),
+        })),
+    });
   };
 
   const uploadAvatar = async (uri: string) => {
@@ -771,17 +783,21 @@ export default function Profile() {
 
   // ─── Sign out ─────────────────────────────────────────────
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut();
-          router.replace('/(tabs)/shop');
+    setActionSheet({
+      visible: true,
+      title: 'Sign out',
+      showCancel: false,
+      options: [
+        {
+          label: 'Sign out',
+          destructive: true,
+          onPress: async () => {
+            await supabase.auth.signOut();
+            router.replace('/(tabs)/shop');
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   // ─── Listing card interactions ────────────────────────────
@@ -899,6 +915,7 @@ export default function Profile() {
     setActionSheet({
       visible: true,
       title: 'Delete this listing?',
+      showCancel: false,
       options: [
         {
           label: 'Delete permanently',
@@ -1325,6 +1342,17 @@ export default function Profile() {
           </View>
         </TouchableOpacity>
 
+        {/* Password — email users only */}
+        {isEmailUser && (
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => Alert.alert('Coming Soon', 'Password reset will be available in a future update.')}
+          >
+            <Text style={styles.settingsLabel}>Change Password</Text>
+            <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
+          </TouchableOpacity>
+        )}
+
         <Text style={styles.sectionHeader}>APP</Text>
 
         <TouchableOpacity
@@ -1335,8 +1363,19 @@ export default function Profile() {
           <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
         </TouchableOpacity>
 
+        <Text style={styles.sectionHeader}>DANGER ZONE</Text>
+
         <TouchableOpacity style={styles.settingsRow} onPress={handleSignOut}>
           <Text style={[styles.settingsLabel, styles.signOutText]}>Sign out</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.settingsRow}
+          onPress={() => Alert.alert('Coming Soon', 'Account deletion will be available in a future update.')}
+        >
+          <Text style={[styles.settingsLabel, styles.deleteAccountText]}>
+            Delete Account
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     );
@@ -1401,7 +1440,7 @@ export default function Profile() {
       {/* ───── Tab Switcher ───── */}
       <View style={styles.tabBar}>
         {([
-          { key: 'listings', label: `Listings (${profile.total_listings})` },
+          { key: 'listings', label: `Listings (${listings.length})` },
           { key: 'favorites', label: `Favorites (${favoritesCount})` },
           { key: 'gettoknow', label: 'Bio' },
           { key: 'settings', label: 'Settings' },
@@ -1508,6 +1547,7 @@ export default function Profile() {
         visible={actionSheet.visible}
         title={actionSheet.title}
         options={actionSheet.options}
+        showCancel={actionSheet.showCancel}
         onClose={() => setActionSheet((prev) => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
@@ -2030,6 +2070,9 @@ const styles = StyleSheet.create({
     color: '#999999',
   },
   signOutText: {
+    color: '#E05555',
+  },
+  deleteAccountText: {
     color: '#E05555',
   },
   avatarThumb: {

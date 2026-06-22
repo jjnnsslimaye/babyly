@@ -21,6 +21,7 @@ type ActionSheetProps = {
   title?: string;
   options: ActionSheetOption[];
   onClose: () => void;
+  showCancel?: boolean;
 };
 
 export default function ActionSheet({
@@ -28,6 +29,7 @@ export default function ActionSheet({
   title,
   options,
   onClose,
+  showCancel = false,
 }: ActionSheetProps) {
   const translateY = useRef(new Animated.Value(300)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -113,6 +115,15 @@ export default function ActionSheet({
             </Text>
           </TouchableOpacity>
         ))}
+        {showCancel && (
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={onClose}
+            activeOpacity={0.6}
+          >
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+        )}
       </Animated.View>
     </Modal>
   );
@@ -175,5 +186,17 @@ const styles = StyleSheet.create({
   },
   optionTextDisabled: {
     color: '#999999',
+  },
+  cancelButton: {
+    marginTop: 8,
+    paddingVertical: 16,
+    alignItems: 'center',
+    backgroundColor: '#FAFAFA',
+    borderRadius: 14,
+  },
+  cancelText: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 16,
+    color: '#1A1A1A',
   },
 });
