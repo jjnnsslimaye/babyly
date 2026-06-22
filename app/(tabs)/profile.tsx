@@ -13,6 +13,7 @@ import {
   Modal,
   Animated,
   PanResponder,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,6 +81,8 @@ type FavoriteListing = {
   cover_photo_url: string | null;
   status: string;
   category_name: string | null;
+  condition: string;
+  distance_meters: number | null;
   liked_at: string;
 };
 
@@ -430,8 +433,12 @@ export default function Profile() {
     if (!session) return;
     setLoadingFavorites(true);
     try {
+      const lat = await AsyncStorage.getItem('babyly_user_lat');
+      const lng = await AsyncStorage.getItem('babyly_user_lng');
       const { data, error } = await supabase.rpc('get_my_favorites', {
         p_user_id: session.user.id,
+        p_user_lat: lat ? parseFloat(lat) : null,
+        p_user_lng: lng ? parseFloat(lng) : null,
       });
       if (error) {
         console.error('Error fetching favorites:', error);
@@ -442,6 +449,28 @@ export default function Profile() {
       console.error('Error fetching favorites:', err);
     } finally {
       setLoadingFavorites(false);
+    }
+  };
+
+  const handleUnfavorite = async (item: FavoriteListing) => {
+    const listingType = item.listing_type;
+
+    // Optimistically remove from list and decrement count
+    setFavorites((prev) => prev.filter((f) => f.id !== item.id));
+    setFavoritesCount((prev) => Math.max(0, prev - 1));
+
+    const { error } = await supabase.rpc('set_listing_like', {
+      p_user_id: session!.user.id,
+      p_listing_id: item.id,
+      p_listing_type: listingType,
+      p_liked: false,
+    });
+
+    if (error) {
+      console.error('Error unliking listing:', error);
+      // Revert on failure
+      setFavorites((prev) => [...prev, item]);
+      setFavoritesCount((prev) => prev + 1);
     }
   };
 
@@ -548,20 +577,75 @@ export default function Profile() {
   // ─── Avatar handlers ─────────────────────────────────────
   const handlePickAvatar = async () => {
     if (!session) return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please grant photo library access to update your avatar.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (result.canceled) return;
 
-    const uri = result.assets[0].uri;
+    const hasPhoto = !!profile?.avatar_url;
+
+    const options = [
+      {
+        text: 'Take Photo',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert('Permission required', 'Please grant camera access to take a photo.');
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled) await uploadAvatar(result.assets[0].uri);
+        },
+      },
+      {
+        text: 'Choose from Library',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert('Permission required', 'Please grant photo library access.');
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled) await uploadAvatar(result.assets[0].uri);
+        },
+      },
+      ...(hasPhoto
+        ? [
+            {
+              text: 'Remove Photo',
+              style: 'destructive' as const,
+              onPress: async () => {
+                try {
+                  const { error } = await supabase
+                    .from('users')
+                    .update({ avatar_url: null })
+                    .eq('id', session.user.id);
+                  if (error) throw error;
+                  setProfile((prev) =>
+                    prev ? { ...prev, avatar_url: null } : prev
+                  );
+                } catch (err) {
+                  console.error('Error removing avatar:', err);
+                  Alert.alert('Error', 'Could not remove photo. Please try again.');
+                }
+              },
+            },
+          ]
+        : []),
+      { text: 'Cancel', style: 'cancel' as const },
+    ];
+
+    Alert.alert('Profile Photo', 'Choose an option', options);
+  };
+
+  const uploadAvatar = async (uri: string) => {
+    if (!session) return;
     setUploadingAvatar(true);
     try {
       const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -579,9 +663,9 @@ export default function Profile() {
         });
       if (uploadError) throw uploadError;
 
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
 
       const { error: updateError } = await supabase
         .from('users')
@@ -1000,37 +1084,99 @@ export default function Profile() {
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
         contentContainerStyle={styles.gridContent}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() => handleOpenListing(item)}
-          >
-            <View style={styles.photoSquare}>
-              {item.cover_photo_url ? (
-                <Image
-                  source={{ uri: item.cover_photo_url }}
-                  style={styles.photoImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.photoPlaceholder}>
-                  <Ionicons name="image-outline" size={32} color="#CCCCCC" />
-                </View>
-              )}
-              <View style={styles.favoriteHeart}>
-                <Ionicons name="heart" size={12} color="#FF5A5F" />
+        refreshControl={
+          <RefreshControl
+            refreshing={loadingFavorites}
+            onRefresh={() => {
+              favoritesFetched.current = false;
+              fetchFavorites();
+            }}
+            tintColor="#A4C8D8"
+            colors={['#A4C8D8']}
+          />
+        }
+        renderItem={({ item }) => {
+          const distanceMiles = item.distance_meters
+            ? (item.distance_meters / 1609.34).toFixed(1)
+            : null;
+          const conditionMap: Record<string, string> = {
+            new_unopened: 'New (Unopened)',
+            like_new: 'Like New',
+            gently_used: 'Gently Used',
+            used: 'Used',
+          };
+          const conditionLabel = conditionMap[item.condition] || item.condition;
+
+          return (
+            <TouchableOpacity
+              style={styles.favCard}
+              onPress={() => handleOpenListing(item)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.favPhotoContainer}>
+                {item.cover_photo_url ? (
+                  <Image
+                    source={{ uri: item.cover_photo_url }}
+                    style={styles.favPhoto}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.favPhotoPlaceholder}>
+                    <Ionicons name="image-outline" size={32} color="#CCCCCC" />
+                  </View>
+                )}
+                {/* Pending badge */}
+                {item.status === 'pending' && (
+                  <View style={styles.favPendingBadge}>
+                    <Text style={styles.favPendingText}>Pending</Text>
+                  </View>
+                )}
+                {/* Price badge */}
+                {item.listing_type === 'listing' && item.price !== null ? (
+                  <View style={styles.favPriceBadge}>
+                    <Text style={styles.favPriceText}>
+                      ${item.price.toFixed(2)}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.favFreeBadge}>
+                    <Text style={styles.favFreeText}>FREE</Text>
+                  </View>
+                )}
+                {/* Heart — tap to unlike */}
+                <TouchableOpacity
+                  style={styles.favHeartBadge}
+                  onPress={() => handleUnfavorite(item)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="heart" size={18} color="#FF5A5F" />
+                </TouchableOpacity>
               </View>
-            </View>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
-            {item.listing_type === 'listing' && item.price !== null ? (
-              <Text style={styles.cardPrice}>${item.price.toFixed(2)}</Text>
-            ) : (
-              <Text style={styles.cardPriceFree}>Free</Text>
-            )}
-          </TouchableOpacity>
-        )}
+              <View style={styles.favCardBody}>
+                <Text style={styles.favTitle} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <View style={styles.favMetaRow}>
+                  <Text style={styles.favCondition}>
+                    {conditionLabel.toUpperCase()}
+                  </Text>
+                  {distanceMiles && (
+                    <View style={styles.favDistanceContainer}>
+                      <Ionicons
+                        name="location-outline"
+                        size={11}
+                        color="#A4C8D8"
+                      />
+                      <Text style={styles.favDistanceText}>
+                        {distanceMiles} mi
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
       />
     );
   };
@@ -1179,27 +1325,6 @@ export default function Profile() {
           </View>
         </TouchableOpacity>
 
-        {/* Avatar */}
-        <TouchableOpacity
-          style={styles.settingsRow}
-          onPress={handlePickAvatar}
-          disabled={uploadingAvatar}
-        >
-          <Text style={styles.settingsLabel}>Avatar</Text>
-          <View style={styles.settingsRight}>
-            {uploadingAvatar ? (
-              <ActivityIndicator size="small" color="#A4C8D8" style={{ marginRight: 8 }} />
-            ) : profile.avatar_url ? (
-              <Image source={{ uri: profile.avatar_url }} style={styles.avatarThumb} />
-            ) : (
-              <View style={styles.avatarThumbPlaceholder}>
-                <Text style={styles.avatarThumbInitials}>{initials}</Text>
-              </View>
-            )}
-            <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
-          </View>
-        </TouchableOpacity>
-
         <Text style={styles.sectionHeader}>APP</Text>
 
         <TouchableOpacity
@@ -1221,46 +1346,38 @@ export default function Profile() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* ───── Header ───── */}
       <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          {profile.avatar_url ? (
+        {/* Avatar — centered, tappable */}
+        <TouchableOpacity
+          style={styles.avatarContainer}
+          onPress={handlePickAvatar}
+          disabled={uploadingAvatar}
+          activeOpacity={0.8}
+        >
+          {uploadingAvatar ? (
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            </View>
+          ) : profile.avatar_url ? (
             <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
               <Text style={styles.avatarInitials}>{initials}</Text>
             </View>
           )}
-          <View style={styles.headerIdentity}>
-            <Text style={styles.name}>{fullName}</Text>
-            {profile.location_label ? (
-              <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={12} color="#A4C8D8" />
-                <Text style={styles.locationText}>{profile.location_label}</Text>
-              </View>
-            ) : null}
+          {/* Edit hint badge */}
+          <View style={styles.avatarEditBadge}>
+            <Ionicons name="camera-outline" size={12} color="#FFFFFF" />
           </View>
-          <TouchableOpacity
-            style={styles.gearButton}
-            onPress={() => handleTabChange('settings')}
-          >
-            <Ionicons name="settings-outline" size={22} color="#999999" />
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
 
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCol}>
-            <Text style={styles.statNumber}>{profile.total_listings}</Text>
-            <Text style={styles.statLabel}>LISTINGS</Text>
+        {/* Name and location */}
+        <Text style={styles.name}>{fullName}</Text>
+        {profile.location_label ? (
+          <View style={styles.locationRow}>
+            <Ionicons name="location-outline" size={12} color="#A4C8D8" />
+            <Text style={styles.locationText}>{profile.location_label}</Text>
           </View>
-          <View style={styles.statCol}>
-            <Text style={styles.statNumber}>{profile.total_sold}</Text>
-            <Text style={styles.statLabel}>SOLD</Text>
-          </View>
-          <View style={styles.statCol}>
-            <Text style={styles.statNumber}>{favoritesCount}</Text>
-            <Text style={styles.statLabel}>FAVORITES</Text>
-          </View>
-        </View>
+        ) : null}
 
         {/* Ratings */}
         <View style={styles.ratingsRow}>
@@ -1276,6 +1393,7 @@ export default function Profile() {
             <Text style={styles.noRatingsText}>No ratings yet</Text>
           )}
         </View>
+
       </View>
 
       <View style={styles.headerDivider} />
@@ -1283,9 +1401,9 @@ export default function Profile() {
       {/* ───── Tab Switcher ───── */}
       <View style={styles.tabBar}>
         {([
-          { key: 'listings', label: 'Listings' },
-          { key: 'favorites', label: 'Favorites' },
-          { key: 'gettoknow', label: 'Get to Know You' },
+          { key: 'listings', label: `Listings (${profile.total_listings})` },
+          { key: 'favorites', label: `Favorites (${favoritesCount})` },
+          { key: 'gettoknow', label: 'Bio' },
           { key: 'settings', label: 'Settings' },
         ] as { key: ActiveTab; label: string }[]).map((t) => {
           const isActive = activeTab === t.key;
@@ -1414,15 +1532,17 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 8,
     backgroundColor: '#FAFAFA',
-  },
-  headerTopRow: {
-    flexDirection: 'row',
     alignItems: 'center',
   },
+  avatarContainer: {
+    alignSelf: 'center',
+    marginBottom: 12,
+    position: 'relative',
+  },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
   },
   avatarPlaceholder: {
     backgroundColor: '#A4C8D8',
@@ -1431,21 +1551,32 @@ const styles = StyleSheet.create({
   },
   avatarInitials: {
     fontFamily: 'Quicksand_700Bold',
-    fontSize: 24,
+    fontSize: 28,
     color: '#FFFFFF',
   },
-  headerIdentity: {
-    flex: 1,
-    marginLeft: 12,
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#A4C8D8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FAFAFA',
   },
   name: {
     fontFamily: 'Quicksand_700Bold',
     fontSize: 18,
     color: '#1A1A1A',
+    textAlign: 'center',
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
     marginTop: 4,
   },
@@ -1453,28 +1584,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Quicksand_600SemiBold',
     fontSize: 13,
     color: '#999999',
-  },
-  gearButton: {
-    padding: 4,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    marginTop: 16,
-  },
-  statCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontFamily: 'Quicksand_700Bold',
-    fontSize: 22,
-    color: '#1A1A1A',
-  },
-  statLabel: {
-    fontFamily: 'Quicksand_600SemiBold',
-    fontSize: 11,
-    color: '#999999',
-    marginTop: 2,
   },
   ratingsRow: {
     flexDirection: 'row',
@@ -1611,6 +1720,123 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#A4C8D8',
     marginTop: 2,
+  },
+
+  // ─── Favorites tab cards ──────────────────────────────────
+  favCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginHorizontal: 4,
+    marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  favPhotoContainer: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: '#F0F0F0',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  favPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  favPhotoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favPendingBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(255, 149, 0, 0.9)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  favPendingText: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 10,
+    color: '#FFFFFF',
+  },
+  favPriceBadge: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  favPriceText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  favFreeBadge: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    backgroundColor: '#A4C8D8',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  favFreeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  favHeartBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favCardBody: {
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  favTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  favMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  favCondition: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#999999',
+    letterSpacing: 0.3,
+  },
+  favDistanceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  favDistanceText: {
+    fontSize: 11,
+    color: '#999999',
   },
 
   // ─── List view (Listings tab) ─────────────────────────────
