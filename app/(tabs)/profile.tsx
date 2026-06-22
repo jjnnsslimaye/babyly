@@ -10,9 +10,9 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
-  ActionSheetIOS,
-  Platform,
   Modal,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +24,7 @@ import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import ActionSheet, { ActionSheetOption } from '../../components/ActionSheet';
 
 const STATE_NAME_TO_ABBR: Record<string, string> = {
   'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ',
@@ -100,27 +101,209 @@ function listingHref(listing: { id: string; listing_type: 'listing' | 'buy_nothi
 function StatusBadge({ status }: { status: string }) {
   if (status === 'available') return null;
 
-  let label = '';
-  let bg = '#999999';
-  if (status === 'pending') {
-    label = 'Pending';
-    bg = '#FF9500';
-  } else if (status === 'sold') {
-    label = 'Sold';
-    bg = '#999999';
-  } else if (status === 'claimed') {
-    label = 'Claimed';
-    bg = '#999999';
-  } else {
-    return null;
-  }
+  const config: Record<string, { label: string; bg: string; text: string }> = {
+    pending:  { label: 'Pending',  bg: '#FFF3E0', text: '#FF9500' },
+    sold:     { label: 'Sold',     bg: '#E8F5E9', text: '#34C759' },
+    claimed:  { label: 'Claimed',  bg: '#E8F5E9', text: '#34C759' },
+    archived: { label: 'Archived', bg: '#F5F5F5', text: '#999999' },
+  };
+
+  const c = config[status];
+  if (!c) return null;
 
   return (
-    <View style={[styles.statusBadge, { backgroundColor: bg }]}>
-      <Text style={styles.statusBadgeText}>{label}</Text>
+    <View style={[styles.statusBadge, { backgroundColor: c.bg }]}>
+      <Text style={[styles.statusBadgeText, { color: c.text }]}>
+        {c.label}
+      </Text>
     </View>
   );
 }
+
+const SWIPE_THRESHOLD = 40;
+const ACTION_WIDTH = 160; // two buttons at 80px each
+
+type SwipeableRowProps = {
+  children: React.ReactNode;
+  onManage: () => void;
+  onQuickAction: () => void;
+  quickActionLabel: string;
+  quickActionIcon: string;
+  isFirst?: boolean;
+  itemId: string;
+  onOpen?: (id: string) => void;
+  onRegisterClose?: (id: string, closeFn: () => void) => void;
+};
+
+function SwipeableRow({
+  children,
+  onManage,
+  onQuickAction,
+  quickActionLabel,
+  quickActionIcon,
+  isFirst,
+  itemId,
+  onOpen,
+  onRegisterClose,
+}: SwipeableRowProps) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const isOpen = useRef(false);
+  const hintAnimated = useRef(false);
+
+  useEffect(() => {
+    if (!isFirst || hintAnimated.current) return;
+    hintAnimated.current = true;
+    const runHint = async () => {
+      const seen = await AsyncStorage.getItem('babyly_listings_hint_seen');
+      if (seen) return;
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.timing(translateX, {
+            toValue: -ACTION_WIDTH,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.delay(600),
+          Animated.timing(translateX, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          AsyncStorage.setItem('babyly_listings_hint_seen', 'true');
+        });
+      }, 800);
+    };
+    runHint();
+  }, []);
+
+  useEffect(() => {
+    onRegisterClose?.(itemId, close);
+    return () => {
+      // Cleanup on unmount
+    };
+  }, [itemId]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 10 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const newX = isOpen.current
+          ? Math.min(0, -ACTION_WIDTH + gestureState.dx)
+          : Math.min(0, gestureState.dx);
+        translateX.setValue(newX);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (isOpen.current) {
+          // Row is open — swipe right to close, swipe left to keep open
+          if (gestureState.dx > SWIPE_THRESHOLD) {
+            isOpen.current = false;
+            Animated.spring(translateX, {
+              toValue: 0,
+              useNativeDriver: true,
+              bounciness: 4,
+            }).start();
+          } else {
+            Animated.spring(translateX, {
+              toValue: -ACTION_WIDTH,
+              useNativeDriver: true,
+              bounciness: 4,
+            }).start();
+          }
+        } else {
+          // Row is closed — swipe left to open
+          if (gestureState.dx < -SWIPE_THRESHOLD) {
+            isOpen.current = true;
+            onOpen?.(itemId);
+            Animated.spring(translateX, {
+              toValue: -ACTION_WIDTH,
+              useNativeDriver: true,
+              bounciness: 4,
+            }).start();
+          } else {
+            Animated.spring(translateX, {
+              toValue: 0,
+              useNativeDriver: true,
+              bounciness: 4,
+            }).start();
+          }
+        }
+      },
+    })
+  ).current;
+
+  const close = () => {
+    isOpen.current = false;
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 4,
+    }).start();
+  };
+
+  return (
+    <View style={{ overflow: 'hidden' }}>
+      {/* Action buttons revealed behind the row */}
+      <View style={swipeStyles.actionsContainer}>
+        <TouchableOpacity
+          style={swipeStyles.actionManage}
+          onPress={() => { close(); onManage(); }}
+        >
+          <Ionicons name="settings-outline" size={18} color="#FFFFFF" />
+          <Text style={swipeStyles.actionText}>Manage</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={swipeStyles.actionQuick}
+          onPress={() => { close(); onQuickAction(); }}
+        >
+          <Ionicons name={quickActionIcon as any} size={18} color="#FFFFFF" />
+          <Text style={swipeStyles.actionText}>{quickActionLabel}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* The row itself slides left */}
+      <Animated.View
+        style={{ transform: [{ translateX }] }}
+        {...panResponder.panHandlers}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
+const swipeStyles = StyleSheet.create({
+  actionsContainer: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: ACTION_WIDTH,
+    flexDirection: 'row',
+  },
+  actionManage: {
+    flex: 1,
+    backgroundColor: '#A4C8D8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  actionQuick: {
+    flex: 1,
+    backgroundColor: '#999999',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  actionText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 11,
+    color: '#FFFFFF',
+  },
+});
 
 export default function Profile() {
   const router = useRouter();
@@ -153,14 +336,18 @@ export default function Profile() {
   const [zipError, setZipError] = useState('');
   const [locationLoading, setLocationLoading] = useState(false);
 
+  // Action sheet (listing management options + delete confirmation)
+  const [actionSheet, setActionSheet] = useState<{
+    visible: boolean;
+    title: string;
+    options: ActionSheetOption[];
+  }>({ visible: false, title: '', options: [] });
+
   const listingsFetched = useRef(false);
   const favoritesFetched = useRef(false);
 
-  useEffect(() => {
-    if (!loadingSession && !session) {
-      router.push('/login');
-    }
-  }, [loadingSession]);
+  // Tracks close functions for swipeable rows so only one is open at a time
+  const rowCloseRefs = useRef<Map<string, () => void>>(new Map());
 
   useEffect(() => {
     if (!session) return;
@@ -519,25 +706,141 @@ export default function Profile() {
   };
 
   const handleLongPressMyListing = (listing: MyListing) => {
-    const navigateToEdit = () => {
-      router.push(`/sell?id=${listing.id}&type=${listing.listing_type}`);
-    };
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', 'Edit listing'],
-          cancelButtonIndex: 0,
-        },
-        (idx) => {
-          if (idx === 1) navigateToEdit();
-        }
-      );
-    } else {
-      Alert.alert('Listing options', undefined, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Edit listing', onPress: navigateToEdit },
-      ]);
+    const isBuyNothing = listing.listing_type === 'buy_nothing';
+    const { status } = listing;
+
+    const canArchive = status !== 'archived';
+    const canEdit = status !== 'sold' && status !== 'claimed';
+
+    const options: ActionSheetOption[] = [];
+
+    if (canEdit) {
+      options.push({
+        label: 'Edit listing',
+        onPress: () => router.push(`/sell?id=${listing.id}&type=${listing.listing_type}`),
+      });
     }
+
+    if (status === 'available') {
+      options.push({
+        label: 'Mark as Pending',
+        onPress: () => handleUpdateStatus(listing, 'pending'),
+      });
+      options.push({
+        label: isBuyNothing ? 'Mark as Claimed' : 'Mark as Sold',
+        onPress: () => handleUpdateStatus(listing, isBuyNothing ? 'claimed' : 'sold'),
+      });
+    } else if (status === 'pending') {
+      options.push({
+        label: 'Mark as Available',
+        onPress: () => handleUpdateStatus(listing, 'available'),
+      });
+      options.push({
+        label: isBuyNothing ? 'Mark as Claimed' : 'Mark as Sold',
+        onPress: () => handleUpdateStatus(listing, isBuyNothing ? 'claimed' : 'sold'),
+      });
+    } else if (status === 'sold') {
+      options.push({
+        label: 'Mark as Available',
+        onPress: () => handleUpdateStatus(listing, 'available'),
+      });
+      options.push({
+        label: 'Mark as Pending',
+        onPress: () => handleUpdateStatus(listing, 'pending'),
+      });
+    } else if (status === 'claimed') {
+      options.push({
+        label: 'Mark as Available',
+        onPress: () => handleUpdateStatus(listing, 'available'),
+      });
+      options.push({
+        label: 'Mark as Pending',
+        onPress: () => handleUpdateStatus(listing, 'pending'),
+      });
+    } else if (status === 'archived') {
+      options.push({
+        label: 'Relist as Available',
+        onPress: () => handleUpdateStatus(listing, 'available'),
+      });
+    }
+
+    if (canArchive) {
+      options.push({
+        label: 'Archive',
+        onPress: () => handleUpdateStatus(listing, 'archived'),
+      });
+    }
+
+    options.push({
+      label: 'Delete listing',
+      onPress: () => handleDeleteListing(listing),
+      destructive: true,
+    });
+
+    setActionSheet({
+      visible: true,
+      title: listing.title,
+      options,
+    });
+  };
+
+  const handleUpdateStatus = async (
+    listing: MyListing,
+    newStatus: string
+  ) => {
+    const table =
+      listing.listing_type === 'listing'
+        ? 'listings'
+        : 'buy_nothing_listings';
+
+    const { error } = await supabase
+      .from(table)
+      .update({ status: newStatus })
+      .eq('id', listing.id);
+
+    if (error) {
+      console.error('Error updating status:', error);
+      Alert.alert('Error', 'Could not update listing status. Please try again.');
+      return;
+    }
+
+    setListings((prev) =>
+      prev.map((l) =>
+        l.id === listing.id ? { ...l, status: newStatus } : l
+      )
+    );
+  };
+
+  const handleDeleteListing = (listing: MyListing) => {
+    setActionSheet({
+      visible: true,
+      title: 'Delete this listing?',
+      options: [
+        {
+          label: 'Delete permanently',
+          destructive: true,
+          onPress: async () => {
+            const table =
+              listing.listing_type === 'listing'
+                ? 'listings'
+                : 'buy_nothing_listings';
+
+            const { error } = await supabase
+              .from(table)
+              .delete()
+              .eq('id', listing.id);
+
+            if (error) {
+              console.error('Error deleting listing:', error);
+              Alert.alert('Error', 'Could not delete listing. Please try again.');
+              return;
+            }
+
+            setListings((prev) => prev.filter((l) => l.id !== listing.id));
+          },
+        },
+      ],
+    });
   };
 
   // ─── Render helpers ───────────────────────────────────────
@@ -585,40 +888,88 @@ export default function Profile() {
       <FlatList
         data={listings}
         keyExtractor={(item) => `${item.listing_type}-${item.id}`}
-        numColumns={2}
-        columnWrapperStyle={styles.columnWrapper}
-        contentContainerStyle={styles.gridContent}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() => handleOpenListing(item)}
-            onLongPress={() => handleLongPressMyListing(item)}
-            delayLongPress={300}
-          >
-            <View style={styles.photoSquare}>
-              {item.cover_photo_url ? (
-                <Image
-                  source={{ uri: item.cover_photo_url }}
-                  style={styles.photoImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.photoPlaceholder}>
-                  <Ionicons name="image-outline" size={32} color="#CCCCCC" />
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item, index }) => {
+          const isFirst = index === 0;
+          const archiveLabel = item.status === 'archived'
+            ? 'Relist'
+            : 'Archive';
+          const archiveValue = item.status === 'archived'
+            ? 'available'
+            : 'archived';
+
+          return (
+            <SwipeableRow
+              isFirst={isFirst}
+              itemId={item.id}
+              onRegisterClose={(id, closeFn) => {
+                rowCloseRefs.current.set(id, closeFn);
+              }}
+              onOpen={(id) => {
+                // Close all other open rows
+                rowCloseRefs.current.forEach((closeFn, rowId) => {
+                  if (rowId !== id) closeFn();
+                });
+              }}
+              onManage={() => handleLongPressMyListing(item)}
+              onQuickAction={() => handleUpdateStatus(item, archiveValue)}
+              quickActionLabel={archiveLabel}
+              quickActionIcon={item.status === 'archived'
+                ? 'refresh-outline'
+                : 'archive-outline'}
+            >
+              <TouchableOpacity
+                style={styles.listRow}
+                onPress={() => handleOpenListing(item)}
+                activeOpacity={0.7}
+              >
+                {/* Thumbnail */}
+                <View style={styles.listThumb}>
+                  {item.cover_photo_url ? (
+                    <Image
+                      source={{ uri: item.cover_photo_url }}
+                      style={styles.listThumbImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.listThumbPlaceholder}>
+                      <Ionicons name="image-outline" size={24} color="#CCCCCC" />
+                    </View>
+                  )}
                 </View>
-              )}
-              <StatusBadge status={item.status} />
-            </View>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
-            {item.listing_type === 'listing' && item.price !== null ? (
-              <Text style={styles.cardPrice}>${item.price.toFixed(2)}</Text>
-            ) : (
-              <Text style={styles.cardPriceFree}>Free</Text>
-            )}
-          </TouchableOpacity>
-        )}
+
+                {/* Info */}
+                <View style={styles.listInfo}>
+                  <Text style={styles.listTitle} numberOfLines={2}>
+                    {item.title}
+                  </Text>
+                  <Text style={styles.listCategory} numberOfLines={1}>
+                    {item.category_name || 'Uncategorized'}
+                  </Text>
+                  <View style={styles.listMeta}>
+                    {item.listing_type === 'listing' && item.price !== null ? (
+                      <Text style={styles.listPrice}>
+                        ${item.price.toFixed(2)}
+                      </Text>
+                    ) : (
+                      <Text style={styles.listPriceFree}>Free</Text>
+                    )}
+                    {item.status !== 'available' && (
+                      <StatusBadge status={item.status} />
+                    )}
+                  </View>
+                </View>
+
+                {/* Swipe hint icon */}
+                <Ionicons
+                  name="chevron-back-outline"
+                  size={16}
+                  color="#CCCCCC"
+                />
+              </TouchableOpacity>
+            </SwipeableRow>
+          );
+        }}
       />
     );
   };
@@ -1034,6 +1385,13 @@ export default function Profile() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      <ActionSheet
+        visible={actionSheet.visible}
+        title={actionSheet.title}
+        options={actionSheet.options}
+        onClose={() => setActionSheet((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }
@@ -1216,18 +1574,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statusBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
+    alignSelf: 'flex-start',
   },
   statusBadgeText: {
     fontFamily: 'Quicksand_700Bold',
-    fontSize: 10,
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
+    fontSize: 11,
   },
   favoriteHeart: {
     position: 'absolute',
@@ -1257,6 +1611,70 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#A4C8D8',
     marginTop: 2,
+  },
+
+  // ─── List view (Listings tab) ─────────────────────────────
+  listContent: {
+    paddingHorizontal: 0,
+    paddingBottom: 32,
+  },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F0F0F0',
+    gap: 12,
+  },
+  listThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#F5F5F5',
+  },
+  listThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  listThumbPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  listTitle: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 14,
+    color: '#1A1A1A',
+    lineHeight: 20,
+  },
+  listCategory: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 12,
+    color: '#999999',
+  },
+  listMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  listPrice: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 14,
+    color: '#1A1A1A',
+  },
+  listPriceFree: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 14,
+    color: '#A4C8D8',
   },
 
   // ─── Empty state ──────────────────────────────────────────

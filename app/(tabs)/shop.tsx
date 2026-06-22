@@ -11,6 +11,7 @@ import {
   TextInput,
   Modal,
   Animated,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,6 +55,7 @@ type Listing = {
   is_liked: boolean;
   seller_id: string;
   like_count: number;
+  status: string;
 };
 
 type Category = {
@@ -200,6 +202,11 @@ function ListingCard({
         {listing.is_featured && (
           <View style={styles.featuredBadge}>
             <Text style={styles.featuredText}>Featured</Text>
+          </View>
+        )}
+        {listing.status === 'pending' && (
+          <View style={styles.pendingBadge}>
+            <Text style={styles.pendingText}>Pending</Text>
           </View>
         )}
         <View style={styles.priceBadge}>
@@ -513,6 +520,12 @@ export default function Shop() {
     fetchListings();
   }, [fetchListings]);
 
+  // Pull-to-refresh — fetchListings() with no cursor sets/clears
+  // isRefreshing internally, so we just delegate.
+  const handleRefresh = useCallback(async () => {
+    await fetchListings();
+  }, [fetchListings]);
+
   useFocusEffect(
     useCallback(() => {
       const update = consumeLikeUpdate();
@@ -778,6 +791,14 @@ export default function Shop() {
           contentContainerStyle={styles.listContent}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.3}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor="#A4C8D8"
+              colors={['#A4C8D8']}
+            />
+          }
           ListFooterComponent={
             loadingMore ? (
               <View style={styles.footerLoader}>
@@ -1406,6 +1427,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  pendingBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(255, 149, 0, 0.9)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  pendingText: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 10,
+    color: '#FFFFFF',
   },
   priceBadge: {
     position: 'absolute',

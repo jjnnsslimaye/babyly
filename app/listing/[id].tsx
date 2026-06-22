@@ -390,13 +390,20 @@ export default function ListingDetail() {
         {/* Title and Price */}
         <View style={styles.titlePriceRow}>
           <Text style={styles.title}>{listing.title}</Text>
-          {listing.kind === 'listing' ? (
-            <Text style={styles.price}>{formatPrice(listing.price)}</Text>
-          ) : (
-            <View style={styles.freeBadge}>
-              <Text style={styles.freeText}>FREE</Text>
-            </View>
-          )}
+          <View style={styles.priceAndStatusRow}>
+            {listing.kind === 'listing' ? (
+              <Text style={styles.price}>{formatPrice(listing.price)}</Text>
+            ) : (
+              <View style={styles.freeBadge}>
+                <Text style={styles.freeText}>FREE</Text>
+              </View>
+            )}
+            {listing.status === 'pending' && (
+              <View style={styles.pendingPill}>
+                <Text style={styles.pendingPillText}>Pending</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Category and Condition */}
@@ -650,6 +657,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#999999',
     letterSpacing: 0.3,
+  },
+  priceAndStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pendingPill: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  pendingPillText: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 11,
+    color: '#FF9500',
   },
   divider: {
     height: 8,

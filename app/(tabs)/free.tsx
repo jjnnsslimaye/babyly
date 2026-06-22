@@ -11,6 +11,7 @@ import {
   Modal,
   ScrollView,
   Animated,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +33,7 @@ type Listing = {
   is_liked: boolean;
   seller_id: string;
   like_count: number;
+  status: string;
 };
 
 type Category = {
@@ -197,6 +199,11 @@ function ListingCard({
         <View style={styles.freeBadge}>
           <Text style={styles.freeText}>FREE</Text>
         </View>
+        {listing.status === 'pending' && (
+          <View style={styles.pendingBadge}>
+            <Text style={styles.pendingText}>Pending</Text>
+          </View>
+        )}
         {(!session?.user?.id || session.user.id !== listing.seller_id) && (
           <TouchableOpacity
             style={styles.heartButton}
@@ -499,6 +506,12 @@ export default function BuyNothing() {
     fetchListings();
   }, [fetchListings]);
 
+  // Pull-to-refresh — fetchListings() with no cursor sets/clears
+  // isRefreshing internally, so we just delegate.
+  const handleRefresh = useCallback(async () => {
+    await fetchListings();
+  }, [fetchListings]);
+
   useFocusEffect(
     useCallback(() => {
       const update = consumeLikeUpdate();
@@ -783,6 +796,14 @@ export default function BuyNothing() {
           contentContainerStyle={styles.listContent}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.3}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor="#A4C8D8"
+              colors={['#A4C8D8']}
+            />
+          }
           ListFooterComponent={
             loadingMore ? (
               <View style={styles.footerLoader}>
@@ -1427,6 +1448,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  pendingBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(255, 149, 0, 0.9)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  pendingText: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 10,
+    color: '#FFFFFF',
   },
   heartButton: {
     position: 'absolute',
