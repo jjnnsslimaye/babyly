@@ -3,6 +3,7 @@ import { useFonts } from 'expo-font';
 import { Quicksand_600SemiBold, Quicksand_700Bold } from '@expo-google-fonts/quicksand';
 import * as SplashScreen from 'expo-splash-screen';
 import { useState, useEffect, createContext, useContext } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { getPendingGoogleProfile, clearPendingGoogleProfile } from '../lib/pendingGoogleProfile';
@@ -88,6 +89,40 @@ export default function RootLayout() {
     checkProfileCompleted();
   }, [session, loadingSession]);
 
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const setOnlineStatus = async (isOnline: boolean) => {
+      await supabase
+        .from('users')
+        .update({
+          is_online: isOnline,
+          last_seen_at: new Date().toISOString(),
+        })
+        .eq('id', session.user.id);
+    };
+
+    // Set online when this effect runs (app is foregrounded)
+    setOnlineStatus(true);
+
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextState: AppStateStatus) => {
+        if (nextState === 'active') {
+          setOnlineStatus(true);
+        } else if (nextState === 'background' || nextState === 'inactive') {
+          setOnlineStatus(false);
+        }
+      }
+    );
+
+    return () => {
+      // Set offline on cleanup (session change or unmount)
+      setOnlineStatus(false);
+      subscription.remove();
+    };
+  }, [session?.user?.id]);
+
   if (!fontsLoaded || loadingSession) {
     return null;
   }
@@ -108,6 +143,7 @@ export default function RootLayout() {
         <Stack.Screen name="account-setup" options={{ headerShown: false }} />
         <Stack.Screen name="personalize" options={{ headerShown: false }} />
         <Stack.Screen name="location-setup" options={{ headerShown: false }} />
+        <Stack.Screen name="conversation/[id]" options={{ headerShown: false }} />
       </Stack>
     </AuthContext.Provider>
   );

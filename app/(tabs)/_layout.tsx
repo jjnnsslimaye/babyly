@@ -3,12 +3,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, TouchableOpacity, StyleSheet, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../_layout';
+import { useState, useEffect } from 'react';
+import { subscribeToUnread, getUnreadCount } from '../../lib/unreadStore';
 
 function CustomTabBar(props: any) {
   const { state, descriptors, navigation } = props;
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const [unread, setUnread] = useState(getUnreadCount());
+
+  useEffect(() => {
+    const unsub = subscribeToUnread(setUnread);
+    return unsub;
+  }, []);
 
   const PROTECTED_TABS = ['sell', 'chat', 'profile'];
 
@@ -74,11 +82,20 @@ function CustomTabBar(props: any) {
             onPress={onPress}
             style={styles.tab}
           >
-            {options.tabBarIcon?.({
-              focused: isFocused,
-              color: isFocused ? '#A4C8D8' : '#999999',
-              size: 24,
-            })}
+            <View style={{ position: 'relative' }}>
+              {options.tabBarIcon?.({
+                focused: isFocused,
+                color: isFocused ? '#A4C8D8' : '#999999',
+                size: 24,
+              })}
+              {route.name === 'chat' && unread > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>
+                    {unread > 99 ? '99+' : unread}
+                  </Text>
+                </View>
+              )}
+            </View>
             {typeof label === 'string' && (
               <Text
                 style={[
@@ -194,5 +211,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#A4C8D8',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#E05555',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  tabBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontFamily: 'Quicksand_700Bold',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    lineHeight: 12,
   },
 });

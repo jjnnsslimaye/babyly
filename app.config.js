@@ -31,6 +31,7 @@ export default {
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
+      softwareKeyboardLayoutMode: "resize",
       permissions: [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -55,6 +56,14 @@ export default {
       "expo-font",
       "expo-video",
       "expo-image-picker",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
       "expo-file-system",
       [
         "expo-location",

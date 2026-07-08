@@ -146,6 +146,7 @@ export default function ListingDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [contactingSeller, setContactingSeller] = useState(false);
 
   const viewabilityConfig = useRef({
     minimumViewTime: 100,
@@ -286,6 +287,68 @@ export default function ListingDetail() {
       isLiked: is_liked,
       likeCount: like_count,
     });
+  };
+
+  const handleContactSeller = async () => {
+    if (!session?.user?.id) {
+      router.push('/login');
+      return;
+    }
+    if (!listing || isOwnListing) return;
+
+    setContactingSeller(true);
+    try {
+      // Check for existing conversation first
+      const listingType = listing.kind === 'listing' ? 'listing' : 'buy_nothing';
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('listing_id', listing.id)
+        .eq('listing_type', listingType)
+        .eq('buyer_id', session.user.id)
+        .maybeSingle();
+
+      if (existing?.id) {
+        // Existing conversation — navigate directly to it
+        router.push({
+          pathname: '/conversation/[id]',
+          params: { id: existing.id },
+        });
+      } else {
+        // No existing conversation — navigate with new params
+        router.push({
+          pathname: '/conversation/[id]',
+          params: {
+            id: 'new',
+            listing_id: listing.id,
+            listing_type: listingType,
+            seller_id: listing.seller.id,
+            listing_title: listing.title,
+            listing_cover_photo_url: listing.cover_photo_url || '',
+            listing_price: listing.kind === 'listing' ? String(listing.price) : '',
+            listing_status: listing.status,
+          },
+        });
+      }
+    } catch (err) {
+      console.error('Error checking conversation:', err);
+      // Fall back to new conversation on error
+      router.push({
+        pathname: '/conversation/[id]',
+        params: {
+          id: 'new',
+          listing_id: listing.id,
+          listing_type: listing.kind === 'listing' ? 'listing' : 'buy_nothing',
+          seller_id: listing.seller.id,
+          listing_title: listing.title,
+          listing_cover_photo_url: listing.cover_photo_url || '',
+          listing_price: listing.kind === 'listing' ? String(listing.price) : '',
+          listing_status: listing.status,
+        },
+      });
+    } finally {
+      setContactingSeller(false);
+    }
   };
 
   if (loading) {
@@ -513,10 +576,17 @@ export default function ListingDetail() {
         ) : (
           <TouchableOpacity
             style={styles.messageSellerButton}
-            onPress={() => router.push('/login')}
+            onPress={handleContactSeller}
+            disabled={contactingSeller}
           >
-            <Ionicons name="chatbubble-outline" size={18} color="#ffffff" />
-            <Text style={styles.messageSellerText}>Message Seller</Text>
+            {contactingSeller ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <Ionicons name="chatbubble-outline" size={18} color="#ffffff" />
+                <Text style={styles.messageSellerText}>Message Seller</Text>
+              </>
+            )}
           </TouchableOpacity>
         )}
       </View>
