@@ -11,6 +11,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
+  ScrollView,
+  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +33,7 @@ type Message = {
   content: string | null;
   image_url: string | null;
   is_read: boolean;
+  message_type: 'user' | 'system';
   created_at: string;
 };
 
@@ -139,6 +143,45 @@ export default function Conversation() {
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
+  const [buyerRatingFlow, setBuyerRatingFlow] = useState<{
+    visible: boolean;
+    step: 'rate' | 'confirm' | 'success';
+    stars: number;
+    selectedTags: string[];
+    comment: string;
+    ratingsRowId: string | null;
+    sellerName: string;
+  }>({
+    visible: false,
+    step: 'rate',
+    stars: 1,
+    selectedTags: [],
+    comment: '',
+    ratingsRowId: null,
+    sellerName: '',
+  });
+
+  const [ratingTags, setRatingTags] = useState<{
+    id: string;
+    tag_key: string;
+    label: string;
+  }[]>([]);
+
+  const [ratingConfirmed, setRatingConfirmed] = useState(false);
+
+  const buyerCheckmarkScale = useRef(new Animated.Value(0)).current;
+  const buyerConfettiPieces = Array.from({ length: 52 }, () => ({
+    x: useRef(new Animated.Value(Math.random())).current,
+    y: useRef(new Animated.Value(-20)).current,
+    opacity: useRef(new Animated.Value(0.6 + Math.random() * 0.4)).current,
+    rotate: useRef(new Animated.Value(0)).current,
+    width: Math.random() * 10 + 5,
+    height: Math.random() * 6 + 4,
+    color: ['#A4C8D8', '#7BB8CC', '#C8E6F0', '#5BA3BE', '#E0F3FA'][
+      Math.floor(Math.random() * 5)
+    ],
+  }));
+
   const fetchConversationDetail = async () => {
     if (!session?.user?.id) return;
       console.log('fetchConversationDetail - session exists:', !!session?.user?.id, 'isNew:', isNew);
@@ -193,17 +236,15 @@ export default function Conversation() {
         .select('id, first_name, avatar_url, is_online, last_seen_at')
         .eq('id', otherUserId)
         .single(),
-      data.listing_type === 'listing'
-        ? supabase
-            .from('listings')
-            .select('title, cover_photo_url, price, status')
-            .eq('id', data.listing_id)
-            .single()
-        : supabase
-            .from('buy_nothing_listings')
-            .select('title, cover_photo_url, status')
-            .eq('id', data.listing_id)
-            .single(),
+      supabase.rpc(
+        data.listing_type === 'listing'
+          ? 'get_listing_detail'
+          : 'get_buy_nothing_detail',
+        {
+          p_listing_id: data.listing_id,
+          p_user_id: session?.user?.id || null,
+        }
+      ),
     ]);
 
     setConversation({
@@ -212,10 +253,7 @@ export default function Conversation() {
       listing_type: data.listing_type,
       listing_title: listingRes.data?.title || '',
       listing_cover_photo_url: listingRes.data?.cover_photo_url || null,
-      listing_price:
-        listingRes.data && 'price' in listingRes.data
-          ? (listingRes.data as any).price
-          : null,
+      listing_price: listingRes.data?.price ?? null,
       listing_status: listingRes.data?.status || 'available',
       other_user_id: otherUserId,
       other_user_first_name: userRes.data?.first_name || '',
@@ -241,6 +279,126 @@ export default function Conversation() {
     setLoading(false);
   };
 
+  const checkRatingStatus = async () => {
+    if (!session?.user?.id || !conversation) return;
+    const isBuyer = conversation.buyer_id === session.user.id;
+    const { data } = await supabase
+      .from('ratings')
+      .select('status')
+      .eq('listing_id', conversation.listing_id)
+      .eq('listing_type', conversation.listing_type)
+      .eq(isBuyer ? 'buyer_id' : 'seller_id', session.user.id)
+      .eq('status', 'confirmed')
+      .maybeSingle();
+    if (data) {
+      setRatingConfirmed(true);
+    }
+  };
+
+  const handleOpenBuyerRating = async (message: Message) => {
+    if (!session?.user?.id || !conversation) return;
+
+    // Find the pending ratings row for this conversation
+    const { data: ratingsData } = await supabase
+      .from('ratings')
+      .select('id, seller_id')
+      .eq('listing_id', conversation.listing_id)
+      .eq('listing_type', conversation.listing_type)
+      .eq('buyer_id', session.user.id)
+      .eq('status', 'pending_buyer_confirmation')
+      .maybeSingle();
+
+    if (!ratingsData) {
+      if (ratingConfirmed) return; // Already confirmed, silently ignore tap
+      Alert.alert(
+        'Already responded',
+        'This rating has already been confirmed or has expired.'
+      );
+      return;
+    }
+
+    setBuyerRatingFlow({
+      visible: true,
+      step: 'rate',
+      stars: 1,
+      selectedTags: [],
+      comment: '',
+      ratingsRowId: ratingsData.id,
+      sellerName: conversation.other_user_first_name,
+    });
+  };
+
+  const handleSubmitBuyerRating = async () => {
+    if (!buyerRatingFlow.ratingsRowId || !session?.user?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('ratings')
+        .update({
+          buyer_rating: buyerRatingFlow.stars,
+          buyer_tags: buyerRatingFlow.selectedTags,
+          buyer_comment: buyerRatingFlow.comment.trim() || null,
+          buyer_rated_at: new Date().toISOString(),
+          status: 'confirmed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', buyerRatingFlow.ratingsRowId);
+
+      if (error) throw error;
+
+      // Trigger success animation
+      setRatingConfirmed(true);
+      setBuyerRatingFlow((prev) => ({ ...prev, step: 'success' }));
+      triggerBuyerSuccessAnimation();
+    } catch (err) {
+      console.error('Error submitting buyer rating:', err);
+      Alert.alert('Error', 'Could not submit your rating. Please try again.');
+    }
+  };
+
+  const triggerBuyerSuccessAnimation = () => {
+    buyerCheckmarkScale.setValue(0);
+    buyerConfettiPieces.forEach((p) => {
+      p.y.setValue(-20);
+      p.opacity.setValue(0.6 + Math.random() * 0.4);
+      p.rotate.setValue(0);
+    });
+
+    Animated.spring(buyerCheckmarkScale, {
+      toValue: 1,
+      damping: 10,
+      stiffness: 200,
+      useNativeDriver: true,
+    }).start();
+
+    buyerConfettiPieces.forEach((p, i) => {
+      Animated.parallel([
+        Animated.timing(p.y, {
+          toValue: 700,
+          duration: 1500 + Math.random() * 500,
+          delay: i * 30,
+          useNativeDriver: true,
+        }),
+        Animated.timing(p.opacity, {
+          toValue: 0,
+          duration: 1500 + Math.random() * 500,
+          delay: i * 30 + 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(p.rotate, {
+          toValue: Math.random() > 0.5 ? 360 : -360,
+          duration: 1500,
+          delay: i * 30,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+
+    setTimeout(() => {
+      setBuyerRatingFlow((prev) => ({ ...prev, visible: false }));
+    }, 2200);
+  };
+
   // Mount
   useEffect(() => {
     const init = async () => {
@@ -251,9 +409,34 @@ export default function Conversation() {
     init();
   }, [conversationId, session?.user?.id]);
 
+  useEffect(() => {
+    if (conversation && session?.user?.id) {
+      checkRatingStatus();
+    }
+  }, [conversation, session?.user?.id]);
+
+  useEffect(() => {
+    const fetchTags = async () => {
+      const { data } = await supabase
+        .from('rating_tags')
+        .select('id, tag_key, label')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (data) setRatingTags(data);
+    };
+    fetchTags();
+  }, []);
+
   // Realtime subscription — new messages
   useEffect(() => {
     if (!conversationId) return;
+    // Remove existing channel if it exists to prevent duplicate subscription
+    const existingChannel = supabase.getChannels().find(
+      (ch) => ch.topic === `realtime:messages_${conversationId}`
+    );
+    if (existingChannel) {
+      supabase.removeChannel(existingChannel);
+    }
     const channel = supabase
       .channel(`messages_${conversationId}`)
       .on(
@@ -281,6 +464,7 @@ export default function Conversation() {
             content: newMsg.content,
             image_url: newMsg.image_url,
             is_read: newMsg.is_read,
+            message_type: newMsg.message_type || 'user',
             created_at: newMsg.created_at,
           };
 
@@ -326,7 +510,12 @@ export default function Conversation() {
 
   useEffect(() => {
     if (!conversation?.other_user_id) return;
-
+    const existingPresenceChannel = supabase.getChannels().find(
+      (ch) => ch.topic === `realtime:presence_${conversation.other_user_id}`
+    );
+    if (existingPresenceChannel) {
+      supabase.removeChannel(existingPresenceChannel);
+    }
     const channel = supabase
       .channel(`presence_${conversation.other_user_id}`)
       .on(
@@ -442,6 +631,7 @@ export default function Conversation() {
           content: sent.content,
           image_url: sent.image_url,
           is_read: sent.is_read,
+          message_type: sent.message_type || 'user',
           created_at: sent.created_at,
         };
         setMessages((prev) => {
@@ -561,6 +751,58 @@ export default function Conversation() {
   }) => {
     const isMine = item.sender_id === session?.user?.id;
     const isImageOnly = !!item.image_url && !item.content;
+    const isSystem = item.message_type === 'system';
+
+    // System message — render as tappable card
+    if (isSystem) {
+      const isBuyer = conversation?.buyer_id === session?.user?.id;
+      return (
+        <View>
+          {shouldShowDateSeparator(index) && (
+            <View style={styles.dateSeparator}>
+              <View style={styles.dateSeparatorLine} />
+              <Text style={styles.dateSeparatorText}>
+                {formatDateSeparator(item.created_at)}
+              </Text>
+              <View style={styles.dateSeparatorLine} />
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.systemMessage}
+            onPress={() => isBuyer ? handleOpenBuyerRating(item) : undefined}
+            activeOpacity={isBuyer ? 0.7 : 1}
+          >
+            <View style={styles.systemMessageIconRow}>
+              <Ionicons name="star" size={14} color="#FFB800" />
+              <Ionicons name="star" size={14} color="#FFB800" />
+              <Ionicons name="star" size={14} color="#FFB800" />
+              <Ionicons name="star" size={14} color="#FFB800" />
+              <Ionicons name="star" size={14} color="#FFB800" />
+            </View>
+            <Text style={styles.systemMessageText}>
+              {isBuyer
+                ? item.content
+                : `You rated ${conversation?.other_user_first_name || 'the buyer'} and invited them to confirm and rate your transaction.`}
+            </Text>
+            {ratingConfirmed ? (
+              <View style={styles.systemMessageAction}>
+                <Ionicons name="checkmark-circle" size={14} color="#34C759" />
+                <Text style={[styles.systemMessageActionText, { color: '#34C759' }]}>
+                  Transaction confirmed
+                </Text>
+              </View>
+            ) : isBuyer ? (
+              <View style={styles.systemMessageAction}>
+                <Text style={styles.systemMessageActionText}>
+                  Tap to rate
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color="#A4C8D8" />
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        </View>
+      );
+    }
 
     return (
       <View>
@@ -808,6 +1050,7 @@ export default function Conversation() {
                           content: sent.content,
                           image_url: sent.image_url,
                           is_read: sent.is_read,
+                          message_type: sent.message_type || 'user',
                           created_at: sent.created_at,
                         };
                         setMessages((prev) => {
@@ -899,6 +1142,246 @@ export default function Conversation() {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* ───── Buyer Rating Modal ───── */}
+        <Modal
+          visible={buyerRatingFlow.visible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => {
+            if (buyerRatingFlow.step !== 'success') {
+              setBuyerRatingFlow((prev) => ({ ...prev, visible: false }));
+            }
+          }}
+        >
+          <SafeAreaView
+            style={{ flex: 1, backgroundColor: '#FAFAFA' }}
+            edges={['top']}
+          >
+            {/* Header */}
+            {buyerRatingFlow.step !== 'success' && (
+              <View style={styles.ratingHeader}>
+                {buyerRatingFlow.step === 'rate' ? (
+                  <TouchableOpacity
+                    onPress={() =>
+                      setBuyerRatingFlow((prev) => ({ ...prev, visible: false }))
+                    }
+                  >
+                    <Ionicons name="close" size={24} color="#1A1A1A" />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() =>
+                      setBuyerRatingFlow((prev) => ({ ...prev, step: 'rate' }))
+                    }
+                  >
+                    <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
+                  </TouchableOpacity>
+                )}
+                <Text style={styles.ratingHeaderTitle}>
+                  {buyerRatingFlow.step === 'rate'
+                    ? 'Rate your seller'
+                    : 'Confirm & Submit'}
+                </Text>
+                <View style={{ width: 24 }} />
+              </View>
+            )}
+
+            {/* Step: Rate */}
+            {buyerRatingFlow.step === 'rate' && (
+              <ScrollView
+                contentContainerStyle={styles.ratingContent}
+                keyboardShouldPersistTaps="handled"
+              >
+                {/* Stars */}
+                <Text style={styles.ratingLabel}>Your rating</Text>
+                <View style={styles.starsRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <TouchableOpacity
+                      key={star}
+                      onPress={() =>
+                        setBuyerRatingFlow((prev) => ({ ...prev, stars: star }))
+                      }
+                    >
+                      <Ionicons
+                        name={star <= buyerRatingFlow.stars ? 'star' : 'star-outline'}
+                        size={36}
+                        color="#FFB800"
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Tags */}
+                <Text style={styles.ratingLabel}>
+                  Add tags{' '}
+                  <Text style={styles.ratingOptional}>(optional)</Text>
+                </Text>
+                <View style={styles.tagsGrid}>
+                  {ratingTags.map((tag) => {
+                    const selected = buyerRatingFlow.selectedTags.includes(
+                      tag.tag_key
+                    );
+                    return (
+                      <TouchableOpacity
+                        key={tag.tag_key}
+                        style={[
+                          styles.tagPill,
+                          selected && styles.tagPillSelected,
+                        ]}
+                        onPress={() =>
+                          setBuyerRatingFlow((prev) => ({
+                            ...prev,
+                            selectedTags: selected
+                              ? prev.selectedTags.filter(
+                                  (t) => t !== tag.tag_key
+                                )
+                              : [...prev.selectedTags, tag.tag_key],
+                          }))
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.tagPillText,
+                            selected && styles.tagPillTextSelected,
+                          ]}
+                        >
+                          {tag.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Comment */}
+                <Text style={styles.ratingLabel}>
+                  Leave a comment{' '}
+                  <Text style={styles.ratingOptional}>(optional)</Text>
+                </Text>
+                <TextInput
+                  style={styles.ratingCommentInput}
+                  placeholder="Share your experience..."
+                  placeholderTextColor="#BBBBBB"
+                  value={buyerRatingFlow.comment}
+                  onChangeText={(text) =>
+                    setBuyerRatingFlow((prev) => ({ ...prev, comment: text }))
+                  }
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  maxLength={500}
+                />
+
+                <TouchableOpacity
+                  style={styles.ratingNextButton}
+                  onPress={() =>
+                    setBuyerRatingFlow((prev) => ({ ...prev, step: 'confirm' }))
+                  }
+                >
+                  <Text style={styles.ratingNextButtonText}>Continue</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+
+            {/* Step: Confirm */}
+            {buyerRatingFlow.step === 'confirm' && (
+              <View style={styles.ratingContent}>
+                <Text style={styles.confirmTitle}>Ready to submit?</Text>
+                <Text style={styles.confirmBody}>
+                  You are about to confirm your transaction with{' '}
+                  <Text style={styles.confirmBold}>
+                    {buyerRatingFlow.sellerName}
+                  </Text>{' '}
+                  and submit your rating. Once confirmed, both ratings will
+                  be visible to other users.
+                </Text>
+
+                {/* Rating summary */}
+                <View style={styles.confirmSummary}>
+                  <View style={styles.confirmStarsRow}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={
+                          star <= buyerRatingFlow.stars ? 'star' : 'star-outline'
+                        }
+                        size={20}
+                        color="#FFB800"
+                      />
+                    ))}
+                  </View>
+                  {buyerRatingFlow.selectedTags.length > 0 && (
+                    <Text style={styles.confirmTags}>
+                      {buyerRatingFlow.selectedTags
+                        .map(
+                          (key) =>
+                            ratingTags.find((t) => t.tag_key === key)?.label
+                        )
+                        .filter(Boolean)
+                        .join(', ')}
+                    </Text>
+                  )}
+                  {buyerRatingFlow.comment.trim() && (
+                    <Text style={styles.confirmComment}>
+                      "{buyerRatingFlow.comment.trim()}"
+                    </Text>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.ratingNextButton}
+                  onPress={handleSubmitBuyerRating}
+                >
+                  <Text style={styles.ratingNextButtonText}>
+                    Confirm & Submit
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Step: Success */}
+            {buyerRatingFlow.step === 'success' && (
+              <View style={styles.successContainer}>
+                {buyerConfettiPieces.map((piece, i) => (
+                  <Animated.View
+                    key={i}
+                    style={[
+                      styles.confettiPiece,
+                      {
+                        left: `${piece.x._value * 100}%`,
+                        width: piece.width,
+                        height: piece.height,
+                        backgroundColor: piece.color,
+                        transform: [
+                          { translateY: piece.y },
+                          {
+                            rotate: piece.rotate.interpolate({
+                              inputRange: [-360, 360],
+                              outputRange: ['-360deg', '360deg'],
+                            }),
+                          },
+                        ],
+                        opacity: piece.opacity,
+                      },
+                    ]}
+                  />
+                ))}
+                <Animated.View
+                  style={[
+                    styles.successCheckmark,
+                    { transform: [{ scale: buyerCheckmarkScale }] },
+                  ]}
+                >
+                  <Ionicons name="checkmark" size={52} color="#FFFFFF" />
+                </Animated.View>
+                <Text style={styles.successTitle}>Thank you!</Text>
+                <Text style={styles.successSubtitle}>
+                  Your rating has been submitted
+                </Text>
+              </View>
+            )}
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
@@ -1223,5 +1706,211 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: '#CCCCCC',
+  },
+
+  // ─── System message card ─────────────────────────────────
+  systemMessage: {
+    alignSelf: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    padding: 14,
+    marginVertical: 8,
+    marginHorizontal: 24,
+    width: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  systemMessageIconRow: {
+    flexDirection: 'row',
+    gap: 2,
+    marginBottom: 8,
+    justifyContent: 'center',
+  },
+  systemMessageText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#666666',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 10,
+  },
+  systemMessageAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingTop: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: '#F0F0F0',
+  },
+  systemMessageActionText: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 13,
+    color: '#A4C8D8',
+  },
+
+  // ─── Rating modal ────────────────────────────────────────
+  ratingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F0F0F0',
+  },
+  ratingHeaderTitle: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 16,
+    color: '#1A1A1A',
+  },
+  ratingContent: {
+    padding: 24,
+  },
+  ratingLabel: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 14,
+    color: '#1A1A1A',
+    marginBottom: 12,
+    marginTop: 20,
+  },
+  ratingOptional: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#999999',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  tagsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  tagPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+  },
+  tagPillSelected: {
+    borderColor: '#A4C8D8',
+    backgroundColor: '#EBF5F9',
+  },
+  tagPillText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#999999',
+  },
+  tagPillTextSelected: {
+    color: '#A4C8D8',
+  },
+  ratingCommentInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    padding: 14,
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 14,
+    color: '#1A1A1A',
+    minHeight: 90,
+    marginBottom: 4,
+  },
+  ratingNextButton: {
+    backgroundColor: '#A4C8D8',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  ratingNextButtonText: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  confirmTitle: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 20,
+    color: '#1A1A1A',
+    textAlign: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  confirmBody: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 14,
+    color: '#666666',
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  confirmBold: {
+    fontFamily: 'Quicksand_700Bold',
+    color: '#1A1A1A',
+  },
+  confirmSummary: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  confirmStarsRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  confirmTags: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#666666',
+  },
+  confirmComment: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#666666',
+    fontStyle: 'italic',
+  },
+  successContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  confettiPiece: {
+    position: 'absolute',
+    top: 0,
+    borderRadius: 2,
+  },
+  successCheckmark: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#A4C8D8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  successTitle: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 32,
+    color: '#1A1A1A',
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 15,
+    color: '#999999',
   },
 });

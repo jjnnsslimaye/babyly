@@ -573,6 +573,17 @@ export default function ListingDetail() {
               <Text style={styles.editButtonText}>Edit Listing</Text>
             </TouchableOpacity>
           </View>
+        ) : listing.status === 'sold' || listing.status === 'claimed' ? (
+          <View style={[styles.messageSellerButton, styles.soldButton]}>
+            <Ionicons
+              name={listing.status === 'claimed' ? 'gift-outline' : 'checkmark-circle-outline'}
+              size={18}
+              color="#FFFFFF"
+            />
+            <Text style={styles.messageSellerText}>
+              {listing.status === 'claimed' ? 'Item Claimed' : 'Item Sold'}
+            </Text>
+          </View>
         ) : (
           <TouchableOpacity
             style={styles.messageSellerButton}
@@ -922,5 +933,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  soldButton: {
+    backgroundColor: '#999999',
+    opacity: 0.8,
   },
 });

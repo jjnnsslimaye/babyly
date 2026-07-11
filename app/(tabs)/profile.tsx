@@ -348,6 +348,58 @@ export default function Profile() {
     showCancel?: boolean;
   }>({ visible: false, title: '', options: [], showCancel: false });
 
+  const [ratingFlow, setRatingFlow] = useState<{
+    visible: boolean;
+    step: 'buyer_search' | 'rate' | 'confirm' | 'success';
+    listing: MyListing | null;
+    selectedBuyer: {
+      id: string;
+      first_name: string;
+      last_name: string;
+      avatar_url: string | null;
+    } | null;
+    stars: number;
+    selectedTags: string[];
+    comment: string;
+  }>({
+    visible: false,
+    step: 'buyer_search',
+    listing: null,
+    selectedBuyer: null,
+    stars: 0,
+    selectedTags: [],
+    comment: '',
+  });
+
+  const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
+  const [buyerSearchResults, setBuyerSearchResults] = useState<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    avatar_url: string | null;
+  }[]>([]);
+  const [buyerSearchLoading, setBuyerSearchLoading] = useState(false);
+  const [ratingTags, setRatingTags] = useState<{
+    id: string;
+    tag_key: string;
+    label: string;
+    sort_order: number;
+  }[]>([]);
+  const [submittingRating, setSubmittingRating] = useState(false);
+
+  const confettiPieces = Array.from({ length: 52 }, (_, i) => ({
+    x: useRef(new Animated.Value(Math.random())).current,
+    y: useRef(new Animated.Value(-20)).current,
+    opacity: useRef(new Animated.Value(0.6 + Math.random() * 0.4)).current,
+    rotate: useRef(new Animated.Value(0)).current,
+    width: Math.random() * 10 + 5,
+    height: Math.random() * 6 + 4,
+    color: ['#A4C8D8', '#7BB8CC', '#C8E6F0', '#5BA3BE', '#E0F3FA'][
+      Math.floor(Math.random() * 5)
+    ],
+  }));
+  const checkmarkScale = useRef(new Animated.Value(0)).current;
+
   const listingsFetched = useRef(false);
   const favoritesFetched = useRef(false);
 
@@ -358,6 +410,7 @@ export default function Profile() {
     if (!session) return;
     fetchProfile();
     fetchQuestions();
+    fetchRatingTags();
     // Pre-fetch listings since it's the default tab
     if (!listingsFetched.current) {
       listingsFetched.current = true;
@@ -491,6 +544,180 @@ export default function Profile() {
     } catch (err) {
       console.error('Error fetching questions:', err);
     }
+  };
+
+  const fetchRatingTags = async () => {
+    const { data } = await supabase
+      .from('rating_tags')
+      .select('id, tag_key, label, sort_order')
+      .eq('is_active', true)
+      .order('sort_order');
+    if (data) setRatingTags(data);
+  };
+
+  const handleBuyerSearch = async (query: string) => {
+    setBuyerSearchQuery(query);
+    if (query.trim().length < 1) {
+      setBuyerSearchResults([]);
+      return;
+    }
+    setBuyerSearchLoading(true);
+    const { data } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, avatar_url')
+      .neq('id', session?.user?.id)
+      .or(
+        `first_name.ilike.%${query}%,last_name.ilike.%${query}%`
+      )
+      .limit(10);
+    setBuyerSearchResults(data || []);
+    setBuyerSearchLoading(false);
+  };
+
+  const startRatingFlow = (listing: MyListing) => {
+    setRatingFlow({
+      visible: true,
+      step: 'buyer_search',
+      listing,
+      selectedBuyer: null,
+      stars: 1,
+      selectedTags: [],
+      comment: '',
+    });
+    setBuyerSearchQuery('');
+    setBuyerSearchResults([]);
+  };
+
+  const handleSubmitRating = async () => {
+    if (!ratingFlow.listing || !ratingFlow.selectedBuyer ||
+        ratingFlow.stars === 0 || !session?.user?.id) return;
+
+    setSubmittingRating(true);
+    try {
+      const listing = ratingFlow.listing;
+      const isBuyNothing = listing.listing_type === 'buy_nothing';
+      const newStatus = isBuyNothing ? 'claimed' : 'sold';
+
+      // 1. Update listing status
+      const table = isBuyNothing ? 'buy_nothing_listings' : 'listings';
+      const { error: statusError } = await supabase
+        .from(table)
+        .update({ status: newStatus })
+        .eq('id', listing.id);
+      if (statusError) throw statusError;
+
+      // 2. Create rating row
+      const { error: ratingError } = await supabase
+        .from('ratings')
+        .insert({
+          listing_id: listing.id,
+          listing_type: listing.listing_type,
+          seller_id: session.user.id,
+          buyer_id: ratingFlow.selectedBuyer.id,
+          seller_rating: ratingFlow.stars,
+          seller_tags: ratingFlow.selectedTags,
+          seller_comment: ratingFlow.comment.trim() || null,
+          seller_rated_at: new Date().toISOString(),
+        });
+      if (ratingError) throw ratingError;
+
+      // 3. Create notification for buyer
+      const listingTitle = listing.title;
+      const sellerName = profile?.first_name || 'Someone';
+      await supabase.from('notifications').insert({
+        user_id: ratingFlow.selectedBuyer.id,
+        type: 'rating_request',
+        title: `${sellerName} rated you`,
+        body: `${sellerName} marked "${listingTitle}" as ${isBuyNothing ? 'claimed' : 'sold'} and left you a rating. Confirm the transaction to complete your rating.`,
+        data: {
+          listing_id: listing.id,
+          listing_type: listing.listing_type,
+          seller_id: session.user.id,
+        },
+      });
+
+      // 4. Inject system message if conversation exists
+      const { data: convData } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('listing_id', listing.id)
+        .eq('listing_type', listing.listing_type)
+        .eq('buyer_id', ratingFlow.selectedBuyer.id)
+        .eq('seller_id', session.user.id)
+        .maybeSingle();
+
+      if (convData?.id) {
+        await supabase.from('messages').insert({
+          conversation_id: convData.id,
+          sender_id: session.user.id,
+          content: `${sellerName} marked this item as ${isBuyNothing ? 'claimed' : 'sold'} and left you a rating. Tap here to confirm the transaction and rate them back. You have 30 days to respond.`,
+          message_type: 'system',
+        });
+      }
+
+      // 5. Update local listings state
+      setListings((prev) =>
+        prev.map((l) =>
+          l.id === listing.id ? { ...l, status: newStatus } : l
+        )
+      );
+
+      // 6. Show success animation
+      setRatingFlow((prev) => ({ ...prev, step: 'success' }));
+      triggerSuccessAnimation();
+    } catch (err) {
+      console.error('Error submitting rating:', err);
+      Alert.alert('Error', 'Could not submit rating. Please try again.');
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
+
+  const triggerSuccessAnimation = () => {
+    // Reset values
+    checkmarkScale.setValue(0);
+    confettiPieces.forEach((p) => {
+      p.y.setValue(-20);
+      p.opacity.setValue(0.6 + Math.random() * 0.4);
+      p.rotate.setValue(0);
+    });
+
+    // Animate checkmark
+    Animated.spring(checkmarkScale, {
+      toValue: 1,
+      damping: 10,
+      stiffness: 200,
+      useNativeDriver: true,
+    }).start();
+
+    // Animate confetti
+    confettiPieces.forEach((p, i) => {
+      Animated.parallel([
+        Animated.timing(p.y, {
+          toValue: 700,
+          duration: 1500 + Math.random() * 500,
+          delay: i * 30,
+          useNativeDriver: true,
+        }),
+        Animated.timing(p.opacity, {
+          toValue: 0,
+          duration: 1500 + Math.random() * 500,
+          delay: i * 30 + 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(p.rotate, {
+          toValue: Math.random() > 0.5 ? 360 : -360,
+          duration: 1500,
+          delay: i * 30,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+
+    // Auto-close after 2.2 seconds
+    setTimeout(() => {
+      setRatingFlow((prev) => ({ ...prev, visible: false, step: 'buyer_search' }));
+    }, 2200);
   };
 
   const handleTabChange = (tab: ActiveTab) => {
@@ -828,7 +1055,10 @@ export default function Profile() {
       });
       options.push({
         label: isBuyNothing ? 'Mark as Claimed' : 'Mark as Sold',
-        onPress: () => handleUpdateStatus(listing, isBuyNothing ? 'claimed' : 'sold'),
+        onPress: () => {
+          setActionSheet((prev) => ({ ...prev, visible: false }));
+          setTimeout(() => startRatingFlow(listing), 300);
+        },
       });
     } else if (status === 'pending') {
       options.push({
@@ -837,26 +1067,15 @@ export default function Profile() {
       });
       options.push({
         label: isBuyNothing ? 'Mark as Claimed' : 'Mark as Sold',
-        onPress: () => handleUpdateStatus(listing, isBuyNothing ? 'claimed' : 'sold'),
+        onPress: () => {
+          setActionSheet((prev) => ({ ...prev, visible: false }));
+          setTimeout(() => startRatingFlow(listing), 300);
+        },
       });
     } else if (status === 'sold') {
-      options.push({
-        label: 'Mark as Available',
-        onPress: () => handleUpdateStatus(listing, 'available'),
-      });
-      options.push({
-        label: 'Mark as Pending',
-        onPress: () => handleUpdateStatus(listing, 'pending'),
-      });
+      // Terminal status — no further transitions
     } else if (status === 'claimed') {
-      options.push({
-        label: 'Mark as Available',
-        onPress: () => handleUpdateStatus(listing, 'available'),
-      });
-      options.push({
-        label: 'Mark as Pending',
-        onPress: () => handleUpdateStatus(listing, 'pending'),
-      });
+      // Terminal status — no further transitions
     } else if (status === 'archived') {
       options.push({
         label: 'Relist as Available',
@@ -1550,6 +1769,348 @@ export default function Profile() {
         showCancel={actionSheet.showCancel}
         onClose={() => setActionSheet((prev) => ({ ...prev, visible: false }))}
       />
+
+      {/* ───── Rating Flow Modal ───── */}
+      <Modal
+        visible={ratingFlow.visible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          if (!submittingRating) {
+            setRatingFlow((prev) => ({ ...prev, visible: false }));
+          }
+        }}
+      >
+        <SafeAreaView style={styles.ratingModal} edges={['top']}>
+          {/* Header — hidden during success animation */}
+          {ratingFlow.step !== 'success' && (
+          <View style={styles.ratingModalHeader}>
+            {ratingFlow.step !== 'buyer_search' ? (
+              <TouchableOpacity
+                onPress={() => setRatingFlow((prev) => ({
+                  ...prev,
+                  step: prev.step === 'confirm' ? 'rate' : 'buyer_search',
+                }))}
+              >
+                <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setRatingFlow((prev) => ({ ...prev, visible: false }))}
+              >
+                <Ionicons name="close" size={24} color="#1A1A1A" />
+              </TouchableOpacity>
+            )}
+            <Text style={styles.ratingModalTitle}>
+              {ratingFlow.step === 'buyer_search' ? 'Who bought this?' :
+               ratingFlow.step === 'rate' ? 'Share your feedback' :
+               ratingFlow.step === 'confirm' ? 'Confirm & Submit' :
+               ''}
+            </Text>
+            <View style={{ width: 24 }} />
+          </View>
+          )}
+
+          {/* Step: Buyer Search */}
+          {ratingFlow.step === 'buyer_search' && (
+            <View style={{ flex: 1 }}>
+              <View style={styles.buyerSearchContainer}>
+                <View style={styles.buyerSearchInputRow}>
+                  <Ionicons name="search-outline" size={18} color="#999999" />
+                  <TextInput
+                    style={styles.buyerSearchInput}
+                    placeholder="Search by name..."
+                    placeholderTextColor="#BBBBBB"
+                    value={buyerSearchQuery}
+                    onChangeText={handleBuyerSearch}
+                    autoFocus
+                  />
+                  {buyerSearchLoading && (
+                    <ActivityIndicator size="small" color="#A4C8D8" />
+                  )}
+                </View>
+              </View>
+              <FlatList
+                data={buyerSearchResults}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.buyerResultRow}
+                    onPress={() => {
+                      setRatingFlow((prev) => ({
+                        ...prev,
+                        selectedBuyer: item,
+                        step: 'rate',
+                      }));
+                    }}
+                  >
+                    {item.avatar_url ? (
+                      <Image
+                        source={{ uri: item.avatar_url }}
+                        style={styles.buyerResultAvatar}
+                      />
+                    ) : (
+                      <View style={[styles.buyerResultAvatar, styles.buyerResultAvatarPlaceholder]}>
+                        <Text style={styles.buyerResultInitials}>
+                          {item.first_name[0]}{item.last_name?.[0] || ''}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={styles.buyerResultName}>
+                      {item.first_name} {item.last_name}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  buyerSearchQuery.length >= 1 && !buyerSearchLoading ? (
+                    <View style={styles.buyerSearchEmpty}>
+                      <Ionicons name="person-outline" size={40} color="#CCCCCC" />
+                      <Text style={styles.buyerSearchEmptyTitle}>
+                        No one found
+                      </Text>
+                      <Text style={styles.buyerSearchEmptyText}>
+                        Try searching by first or last name
+                      </Text>
+                    </View>
+                  ) : buyerSearchQuery.length < 1 ? (
+                    <View style={styles.buyerSearchEmpty}>
+                      <Ionicons name="search-outline" size={40} color="#CCCCCC" />
+                      <Text style={styles.buyerSearchEmptyTitle}>
+                        Find your buyer
+                      </Text>
+                      <Text style={styles.buyerSearchEmptyText}>
+                        Search for the person you sold to
+                      </Text>
+                    </View>
+                  ) : null
+                }
+              />
+            </View>
+          )}
+
+          {/* Step: Rate */}
+          {ratingFlow.step === 'rate' && ratingFlow.selectedBuyer && (
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.ratingStepContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Stars */}
+              <Text style={styles.ratingLabel}>Your rating</Text>
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity
+                    key={star}
+                    onPress={() =>
+                      setRatingFlow((prev) => ({ ...prev, stars: star }))
+                    }
+                  >
+                    <Ionicons
+                      name={star <= ratingFlow.stars ? 'star' : 'star-outline'}
+                      size={36}
+                      color="#FFB800"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Tags */}
+              <Text style={styles.ratingLabel}>
+                Add tags <Text style={styles.ratingOptional}>(optional)</Text>
+              </Text>
+              <View style={styles.tagsGrid}>
+                {ratingTags.map((tag) => {
+                  const selected = ratingFlow.selectedTags.includes(tag.tag_key);
+                  return (
+                    <TouchableOpacity
+                      key={tag.tag_key}
+                      style={[
+                        styles.tagPill,
+                        selected && styles.tagPillSelected,
+                      ]}
+                      onPress={() => {
+                        setRatingFlow((prev) => ({
+                          ...prev,
+                          selectedTags: selected
+                            ? prev.selectedTags.filter((t) => t !== tag.tag_key)
+                            : [...prev.selectedTags, tag.tag_key],
+                        }));
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.tagPillText,
+                          selected && styles.tagPillTextSelected,
+                        ]}
+                      >
+                        {tag.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Comment */}
+              <Text style={styles.ratingLabel}>
+                Leave a comment{' '}
+                <Text style={styles.ratingOptional}>(optional)</Text>
+              </Text>
+              <TextInput
+                style={styles.ratingCommentInput}
+                placeholder="Share your experience..."
+                placeholderTextColor="#BBBBBB"
+                value={ratingFlow.comment}
+                onChangeText={(text) =>
+                  setRatingFlow((prev) => ({ ...prev, comment: text }))
+                }
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                maxLength={500}
+              />
+
+              {/* Next button */}
+              <TouchableOpacity
+                style={[
+                  styles.ratingNextButton,
+                  false && styles.ratingNextButtonDisabled,
+                ]}
+                disabled={false}
+                onPress={() =>
+                  setRatingFlow((prev) => ({ ...prev, step: 'confirm' }))
+                }
+              >
+                <Text style={styles.ratingNextButtonText}>Continue</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {/* Step: Confirm */}
+          {ratingFlow.step === 'confirm' && ratingFlow.selectedBuyer && (
+            <View style={styles.ratingStepContent}>
+              <Text style={styles.confirmTitle}>
+                Ready to submit?
+              </Text>
+              <Text style={styles.confirmBody}>
+                You are about to mark{' '}
+                <Text style={styles.confirmBold}>
+                  {ratingFlow.listing?.title}
+                </Text>{' '}
+                as{' '}
+                {ratingFlow.listing?.listing_type === 'buy_nothing'
+                  ? 'claimed'
+                  : 'sold'}{' '}
+                to{' '}
+                <Text style={styles.confirmBold}>
+                  {ratingFlow.selectedBuyer.first_name}{' '}
+                  {ratingFlow.selectedBuyer.last_name}
+                </Text>
+                . You cannot undo this.{'\n\n'}
+                {ratingFlow.selectedBuyer.first_name} will be invited to
+                rate you, at which point both ratings will be visible to
+                other users.
+              </Text>
+
+              {/* Rating summary */}
+              <View style={styles.confirmSummary}>
+                <View style={styles.confirmStarsRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Ionicons
+                      key={star}
+                      name={star <= ratingFlow.stars ? 'star' : 'star-outline'}
+                      size={20}
+                      color="#FFB800"
+                    />
+                  ))}
+                </View>
+                {ratingFlow.selectedTags.length > 0 && (
+                  <Text style={styles.confirmTags}>
+                    {ratingFlow.selectedTags
+                      .map(
+                        (key) =>
+                          ratingTags.find((t) => t.tag_key === key)?.label
+                      )
+                      .filter(Boolean)
+                      .join(', ')}
+                  </Text>
+                )}
+                {ratingFlow.comment.trim() && (
+                  <Text style={styles.confirmComment}>
+                    "{ratingFlow.comment.trim()}"
+                  </Text>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={styles.ratingNextButton}
+                onPress={handleSubmitRating}
+                disabled={submittingRating}
+              >
+                {submittingRating ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.ratingNextButtonText}>
+                    Confirm & Submit
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+            </View>
+          )}
+
+          {/* Step: Success */}
+          {ratingFlow.step === 'success' && ratingFlow.listing && (
+            <View style={styles.successContainer}>
+              {/* Confetti */}
+              {confettiPieces.map((piece, i) => (
+                <Animated.View
+                  key={i}
+                  style={[
+                    styles.confettiPiece,
+                    {
+                      left: `${piece.x._value * 100}%`,
+                      width: piece.width,
+                      height: piece.height,
+                      backgroundColor: piece.color,
+                      transform: [
+                        { translateY: piece.y },
+                        {
+                          rotate: piece.rotate.interpolate({
+                            inputRange: [-360, 360],
+                            outputRange: ['-360deg', '360deg'],
+                          }),
+                        },
+                      ],
+                      opacity: piece.opacity,
+                    },
+                  ]}
+                />
+              ))}
+
+              {/* Checkmark */}
+              <Animated.View
+                style={[
+                  styles.successCheckmark,
+                  { transform: [{ scale: checkmarkScale }] },
+                ]}
+              >
+                <Ionicons name="checkmark" size={52} color="#FFFFFF" />
+              </Animated.View>
+
+              {/* Text */}
+              <Text style={styles.successTitle}>
+                {ratingFlow.listing.listing_type === 'buy_nothing'
+                  ? 'Claimed!'
+                  : 'Sold!'}
+              </Text>
+              <Text style={styles.successSubtitle}>
+                Your rating has been submitted
+              </Text>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2209,5 +2770,245 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginHorizontal: 16,
     marginTop: 4,
+  },
+  ratingModal: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  ratingModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F0F0F0',
+  },
+  ratingModalTitle: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 16,
+    color: '#1A1A1A',
+  },
+  buyerSearchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F0F0F0',
+  },
+  buyerSearchInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F2',
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  buyerSearchInput: {
+    flex: 1,
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 15,
+    color: '#1A1A1A',
+  },
+  buyerResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F0F0F0',
+    gap: 12,
+  },
+  buyerResultAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  buyerResultAvatarPlaceholder: {
+    backgroundColor: '#A4C8D8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buyerResultInitials: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  buyerResultName: {
+    flex: 1,
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 15,
+    color: '#1A1A1A',
+  },
+  buyerSearchEmpty: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  buyerSearchEmptyTitle: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 16,
+    color: '#1A1A1A',
+    marginTop: 12,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  buyerSearchEmptyText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#999999',
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  successContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  confettiPiece: {
+    position: 'absolute',
+    top: 0,
+    borderRadius: 2,
+  },
+  successCheckmark: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#A4C8D8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  successTitle: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 32,
+    color: '#1A1A1A',
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 15,
+    color: '#999999',
+  },
+  ratingStepContent: {
+    padding: 24,
+  },
+  ratingLabel: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 14,
+    color: '#1A1A1A',
+    marginBottom: 12,
+    marginTop: 20,
+  },
+  ratingOptional: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#999999',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  tagsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  tagPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+  },
+  tagPillSelected: {
+    borderColor: '#A4C8D8',
+    backgroundColor: '#EBF5F9',
+  },
+  tagPillText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#999999',
+  },
+  tagPillTextSelected: {
+    color: '#A4C8D8',
+  },
+  ratingCommentInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    padding: 14,
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 14,
+    color: '#1A1A1A',
+    minHeight: 90,
+    marginBottom: 4,
+  },
+  ratingNextButton: {
+    backgroundColor: '#A4C8D8',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  ratingNextButtonDisabled: {
+    backgroundColor: '#CCCCCC',
+  },
+  ratingNextButtonText: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  confirmIconRow: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 20,
+    color: '#1A1A1A',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  confirmBody: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 14,
+    color: '#666666',
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  confirmBold: {
+    fontFamily: 'Quicksand_700Bold',
+    color: '#1A1A1A',
+  },
+  confirmSummary: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  confirmStarsRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  confirmTags: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#666666',
+  },
+  confirmComment: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#666666',
+    fontStyle: 'italic',
   },
 });
