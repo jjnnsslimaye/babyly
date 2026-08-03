@@ -25,6 +25,7 @@ export default {
     },
     android: {
       package: "com.jnlimaye.babyly",
+      googleServicesFile: "./google-services.json", 
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#ffffff"
@@ -52,6 +53,14 @@ export default {
       }
     },
     plugins: [
+      [
+        "expo-notifications",
+          {
+            "icon": "./assets/icon.png",
+            "color": "#A4C8D8",
+            "sounds": []
+          }
+      ],
       "expo-router",
       "expo-font",
       "expo-video",
