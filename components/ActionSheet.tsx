@@ -7,7 +7,7 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export type ActionSheetOption = {
   label: string;
@@ -19,6 +19,7 @@ export type ActionSheetOption = {
 type ActionSheetProps = {
   visible: boolean;
   title?: string;
+  description?: string;
   options: ActionSheetOption[];
   onClose: () => void;
   showCancel?: boolean;
@@ -27,15 +28,18 @@ type ActionSheetProps = {
 export default function ActionSheet({
   visible,
   title,
+  description,
   options,
   onClose,
   showCancel = false,
 }: ActionSheetProps) {
   const translateY = useRef(new Animated.Value(300)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
     if (visible) {
+      setAnimating(true);
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 1,
@@ -48,8 +52,9 @@ export default function ActionSheet({
           stiffness: 200,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => setAnimating(false));
     } else {
+      setAnimating(true);
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 0,
@@ -61,7 +66,7 @@ export default function ActionSheet({
           duration: 150,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => setAnimating(false));
     }
   }, [visible]);
 
@@ -73,7 +78,7 @@ export default function ActionSheet({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable style={styles.backdropPressable} onPress={onClose}>
         <Animated.View style={[styles.backdrop, { opacity }]} />
       </Pressable>
       <Animated.View
@@ -86,6 +91,9 @@ export default function ActionSheet({
         {title ? (
           <Text style={styles.title}>{title}</Text>
         ) : null}
+        {description ? (
+          <Text style={styles.description}>{description}</Text>
+        ) : null}
 
         {/* Options */}
         {options.map((option, index) => (
@@ -97,12 +105,13 @@ export default function ActionSheet({
               option.disabled && styles.optionDisabled,
             ]}
             onPress={() => {
-              if (option.disabled) return;
+              if (option.disabled || animating) return;
               onClose();
               // Small delay so sheet closes before action fires
               setTimeout(option.onPress, 150);
             }}
             activeOpacity={0.6}
+            disabled={animating}
           >
             <Text
               style={[
@@ -120,6 +129,7 @@ export default function ActionSheet({
             style={styles.cancelButton}
             onPress={onClose}
             activeOpacity={0.6}
+            disabled={animating}
           >
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
@@ -133,6 +143,10 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  backdropPressable: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
   },
   sheet: {
     position: 'absolute',
@@ -163,6 +177,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: '#F0F0F0',
     marginBottom: 4,
+  },
+  description: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#999999',
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 4,
+    paddingHorizontal: 16,
   },
   option: {
     paddingVertical: 16,
