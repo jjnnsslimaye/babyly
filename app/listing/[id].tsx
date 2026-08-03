@@ -19,6 +19,7 @@ import { supabase } from '../../lib/supabase';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAuth } from '../_layout';
 import { setLikeUpdate } from '../../lib/likeStore';
+import ReportModal from '../../components/ReportModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CAROUSEL_HEIGHT = SCREEN_WIDTH * 1.0;
@@ -41,6 +42,8 @@ type Seller = {
   total_listings: number;
   total_sold: number;
   member_since: string;
+  avg_rating: number | null;
+  rating_count: number;
 };
 
 type BaseListing = {
@@ -147,6 +150,7 @@ export default function ListingDetail() {
   const [error, setError] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [contactingSeller, setContactingSeller] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
 
   const viewabilityConfig = useRef({
     minimumViewTime: 100,
@@ -216,11 +220,11 @@ export default function ListingDetail() {
   };
 
   const handleReportListing = () => {
-    Alert.alert(
-      'Report listing',
-      'Thank you for helping keep Babyly safe. Our team will review this listing.',
-      [{ text: 'OK' }]
-    );
+    if (!session?.user?.id) {
+      router.push('/login');
+      return;
+    }
+    setReportModalVisible(true);
   };
 
   const handleToggleLike = async () => {
@@ -486,7 +490,11 @@ export default function ListingDetail() {
 
         {/* Seller Section */}
         <Text style={styles.sectionLabel}>SELLER</Text>
-        <View style={styles.sellerRow}>
+        <TouchableOpacity
+          style={styles.sellerRow}
+          onPress={() => router.push(`/profile/${listing.seller.id}`)}
+          activeOpacity={0.7}
+        >
           <View style={styles.avatar}>
             {listing.seller.avatar_url ? (
               <Image source={{ uri: listing.seller.avatar_url }} style={styles.avatarImage} />
@@ -506,10 +514,27 @@ export default function ListingDetail() {
             </Text>
           </View>
           <View style={styles.ratingPlaceholder}>
-            <Ionicons name="star-outline" size={14} color="#CCCCCC" />
-            <Text style={styles.ratingText}>—</Text>
+            {listing.seller.rating_count > 0 ? (
+              <>
+                <Ionicons name="star" size={14} color="#FFB800" />
+                <Text style={styles.ratingAvg}>
+                  {listing.seller.avg_rating?.toFixed(1)}
+                </Text>
+                <Text style={styles.ratingCount}>
+                  ({listing.seller.rating_count})
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.ratingNone}>No ratings yet</Text>
+            )}
           </View>
-        </View>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color="#CCCCCC"
+            style={{ marginLeft: 4 }}
+          />
+        </TouchableOpacity>
 
         <View style={styles.divider} />
 
@@ -565,6 +590,18 @@ export default function ListingDetail() {
           <Ionicons name="share-social-outline" size={22} color="#1A1A1A" />
         </TouchableOpacity>
         {isOwnListing ? (
+          listing.status === 'sold' || listing.status === 'claimed' ? (
+            <View style={[styles.messageSellerButton, styles.soldButton]}>
+              <Ionicons
+                name={listing.status === 'claimed' ? 'gift-outline' : 'checkmark-circle-outline'}
+                size={18}
+                color="#FFFFFF"
+              />
+              <Text style={styles.messageSellerText}>
+                {listing.status === 'claimed' ? 'Item Claimed' : 'Item Sold'}
+              </Text>
+            </View>
+          ) : (
           <View style={styles.actionBar}>
             <TouchableOpacity
               style={[styles.actionButton, styles.editButton]}
@@ -573,6 +610,7 @@ export default function ListingDetail() {
               <Text style={styles.editButtonText}>Edit Listing</Text>
             </TouchableOpacity>
           </View>
+          )
         ) : listing.status === 'sold' || listing.status === 'claimed' ? (
           <View style={[styles.messageSellerButton, styles.soldButton]}>
             <Ionicons
@@ -601,6 +639,14 @@ export default function ListingDetail() {
           </TouchableOpacity>
         )}
       </View>
+
+      <ReportModal
+        visible={reportModalVisible}
+        onClose={() => setReportModalVisible(false)}
+        reportType="listing"
+        targetId={listing?.id || ''}
+        reporterId={session?.user?.id || ''}
+      />
     </View>
   );
 }
@@ -817,8 +863,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  ratingText: {
-    fontSize: 14,
+  ratingAvg: {
+    fontFamily: 'Quicksand_700Bold',
+    fontSize: 13,
+    color: '#1A1A1A',
+    marginLeft: 4,
+  },
+  ratingCount: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 12,
+    color: '#999999',
+    marginLeft: 2,
+  },
+  ratingNone: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 12,
     color: '#CCCCCC',
   },
   locationRow: {
