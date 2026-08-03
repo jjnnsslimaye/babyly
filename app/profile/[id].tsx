@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../_layout';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type PublicProfile = {
   id: string;
@@ -139,37 +138,15 @@ export default function PublicSellerProfile() {
     };
 
     const fetchListings = async () => {
-      const lat = await AsyncStorage.getItem('babyly_user_lat');
-      const lng = await AsyncStorage.getItem('babyly_user_lng');
-
-      const [shopRes, freeRes] = await Promise.all([
-        supabase.rpc('get_shop_feed', {
-          user_lat: lat ? parseFloat(lat) : 0,
-          user_lng: lng ? parseFloat(lng) : 0,
-          user_id: session?.user?.id || null,
-          page_size: 20,
-        }),
-        supabase.rpc('get_buy_nothing_feed', {
-          user_lat: lat ? parseFloat(lat) : 0,
-          user_lng: lng ? parseFloat(lng) : 0,
-          user_id: session?.user?.id || null,
-          page_size: 20,
-        }),
-      ]);
-
-      const shopListings = (shopRes.data || [])
-        .filter((l: any) => l.seller_id === id)
-        .map((l: any) => ({ ...l, listing_type: 'listing' as const }));
-
-      const freeListings = (freeRes.data || [])
-        .filter((l: any) => l.seller_id === id)
-        .map((l: any) => ({
-          ...l,
-          listing_type: 'buy_nothing' as const,
-          price: null,
-        }));
-
-      setListings([...shopListings, ...freeListings]);
+      const { data, error } = await supabase.rpc('get_seller_listings', {
+        p_seller_id: id,
+        p_user_id: session?.user?.id || null,
+      });
+      if (error) {
+        console.error('Error fetching seller listings:', error);
+        return;
+      }
+      setListings(data || []);
     };
 
     const fetchRatings = async () => {
@@ -447,11 +424,12 @@ export default function PublicSellerProfile() {
                 styles.tabLabel,
                 activeTab === tab && styles.tabLabelActive,
               ]}
+              numberOfLines={1}
             >
               {tab === 'ratings'
-                ? `Ratings (${profile.rating_count})`
+                ? 'Ratings'
                 : tab === 'listings'
-                ? `Active Listings (${listings.length})`
+                ? 'Active Listings'
                 : 'Bio'}
             </Text>
             {activeTab === tab && (
@@ -820,7 +798,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontFamily: 'Quicksand_600SemiBold',
-    fontSize: 13,
+    fontSize: 11,
     color: '#999999',
   },
   tabLabelActive: {

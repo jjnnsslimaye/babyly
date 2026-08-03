@@ -424,11 +424,8 @@ export default function Profile() {
     useCallback(() => {
       if (session?.user?.id) {
         fetchProfile();
-        if (activeTab === 'favorites') {
-          fetchFavorites();
-        }
       }
-    }, [session?.user?.id, activeTab])
+    }, [session?.user?.id])
   );
 
   const fetchProfile = async () => {
@@ -1787,8 +1784,8 @@ export default function Profile() {
       {/* ───── Tab Switcher ───── */}
       <View style={styles.tabBar}>
         {([
-          { key: 'listings', label: `Listings (${listings.length})` },
-          { key: 'favorites', label: `Favorites (${favoritesCount})` },
+          { key: 'listings', label: 'Listings' },
+          { key: 'favorites', label: 'Favorites' },
           { key: 'gettoknow', label: 'Bio' },
           { key: 'settings', label: 'Settings' },
         ] as { key: ActiveTab; label: string }[]).map((t) => {
