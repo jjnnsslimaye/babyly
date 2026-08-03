@@ -1137,6 +1137,7 @@ export default function Profile() {
   };
 
   const handleLongPressMyListing = (listing: MyListing) => {
+    console.log('Long press listing:', { id: listing.id, listing_type: listing.listing_type });
     const isBuyNothing = listing.listing_type === 'buy_nothing';
     const { status } = listing;
 

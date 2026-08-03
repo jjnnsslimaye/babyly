@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
@@ -119,6 +119,18 @@ export default function Sell() {
     avatar_url: string | null;
   } | null>(null);
 
+  const params = useLocalSearchParams<{
+    id?: string;
+    type?: string;
+  }>();
+  const editListingId = params.id || null;
+  const editListingType = params.type || null;
+  const isEditMode = !!editListingId;
+  if (isEditMode) {
+    console.log('Edit mode params:', { editListingId, editListingType });
+  }
+  const [typeChangeToast, setTypeChangeToast] = useState(false);
+
   const [form, setForm] = useState<ListingForm>({
     listingType: null,
     photos: [],
@@ -161,6 +173,75 @@ export default function Sell() {
         if (data) setSellerProfile(data);
       });
   }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!isEditMode || !editListingId || !session?.user?.id) return;
+
+    const fetchListingForEdit = async () => {
+      const rpcName = editListingType === 'buy_nothing'
+        ? 'get_buy_nothing_detail'
+        : 'get_listing_detail';
+
+      const { data, error } = await supabase.rpc(rpcName, {
+        p_listing_id: editListingId,
+        p_user_id: session.user.id,
+      });
+
+      if (error || !data) {
+        console.error('Error fetching listing for edit:', error);
+        return;
+      }
+
+      // Determine category vs subcategory
+      // If parent_category_id exists, this category IS the subcategory
+      const isSubcategory = !!data.parent_category_id;
+      const categoryId = isSubcategory
+        ? data.parent_category_id
+        : data.category_id;
+      const subcategoryId = isSubcategory ? data.category_id : null;
+
+      // Reconstruct location WKT from lat/lng
+      const location =
+        data.location_lat && data.location_lng
+          ? `SRID=4326;POINT(${data.location_lng} ${data.location_lat})`
+          : null;
+
+      // Extract photo URLs from media (photos only, no video)
+      const photoUrls = (data.media || [])
+        .filter((m: any) => m.media_type === 'photo')
+        .sort((a: any, b: any) => a.sort_order - b.sort_order)
+        .map((m: any) => m.url);
+
+      const videoItem = (data.media || []).find(
+        (m: any) => m.media_type === 'video'
+      );
+
+      setForm({
+        listingType: editListingType === 'buy_nothing'
+          ? 'buy_nothing'
+          : 'shop',
+        photos: photoUrls,
+        video: videoItem?.url || null,
+        categoryId,
+        subcategoryId,
+        attributes: data.attributes || {},
+        title: data.title || '',
+        description: data.description || '',
+        brandId: data.brand_id || null,
+        condition: data.condition || null,
+        price: data.price ? String(data.price) : '',
+        paymentMethods: data.payment_methods || [],
+        location,
+        locationLabel: data.location_label || null,
+      });
+
+      // Skip to step 2 (photos) so user sees pre-populated data
+      // Step 1 is listing type which is already set
+      setCurrentStep(2);
+    };
+
+    fetchListingForEdit();
+  }, [isEditMode, editListingId, session?.user?.id]);
 
   // Load data on mount
   useEffect(() => {
@@ -227,6 +308,11 @@ export default function Sell() {
     } finally {
       setLocationLoading(false);
     }
+  };
+
+  const handleDisabledTypeChange = (targetType: string) => {
+    setTypeChangeToast(true);
+    setTimeout(() => setTypeChangeToast(false), 3000);
   };
 
   const handleBack = () => {
@@ -402,13 +488,18 @@ export default function Sell() {
     setError('');
 
     try {
-      const listingId = Crypto.randomUUID();
+      const listingId = isEditMode ? editListingId! : Crypto.randomUUID();
       const userId = session.user.id;
 
-      // Upload photos
+      // Upload photos — skip existing https:// URLs, only upload new local files
       const photoUrls: string[] = [];
       for (let i = 0; i < form.photos.length; i++) {
         const photoUri = form.photos[i];
+        if (photoUri.startsWith('http')) {
+          // Existing photo — keep as-is
+          photoUrls.push(photoUri);
+          continue;
+        }
         const base64 = await FileSystem.readAsStringAsync(photoUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -431,7 +522,10 @@ export default function Sell() {
 
       // Upload video if present
       let videoUrl: string | null = null;
-      if (form.video) {
+      if (form.video && form.video.startsWith('http')) {
+        // Existing video — keep as-is
+        videoUrl = form.video;
+      } else if (form.video) {
         const videoExt = form.video.split('.').pop()?.toLowerCase() || 'mp4';
         const timestamp = Date.now();
         const filePath = `${userId}/${listingId}/${timestamp}-video.${videoExt}`;
@@ -461,8 +555,7 @@ export default function Sell() {
 
       // Insert listing
       const listingData: any = {
-        id: listingId,
-        seller_id: userId,
+        ...(isEditMode ? {} : { id: listingId, seller_id: userId }),
         category_id: form.subcategoryId || form.categoryId,
         title: form.title.trim(),
         description: form.description.trim(),
@@ -478,11 +571,39 @@ export default function Sell() {
       if (form.listingType === 'shop') {
         listingData.price = parseFloat(form.price);
         listingData.payment_methods = form.paymentMethods;
-        const { error: insertError } = await supabase.from('listings').insert(listingData);
-        if (insertError) throw insertError;
+        if (isEditMode) {
+          const { error: updateError } = await supabase
+            .from('listings')
+            .update(listingData)
+            .eq('id', listingId);
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from('listings')
+            .insert(listingData);
+          if (insertError) throw insertError;
+        }
       } else {
-        const { error: insertError } = await supabase.from('buy_nothing_listings').insert(listingData);
-        if (insertError) throw insertError;
+        if (isEditMode) {
+          const { error: updateError } = await supabase
+            .from('buy_nothing_listings')
+            .update(listingData)
+            .eq('id', listingId);
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from('buy_nothing_listings')
+            .insert(listingData);
+          if (insertError) throw insertError;
+        }
+      }
+
+      // For edit mode, delete existing media rows first
+      if (isEditMode) {
+        await supabase
+          .from('listing_media')
+          .delete()
+          .eq('listing_id', listingId);
       }
 
       // Insert media rows
@@ -509,7 +630,8 @@ export default function Sell() {
       const { error: mediaError } = await supabase.from('listing_media').insert(mediaRows);
       if (mediaError) throw mediaError;
 
-      router.replace(`/listing/${listingId}?type=${form.listingType}`);
+      const navType = form.listingType === 'shop' ? 'listing' : 'buy_nothing';
+      router.replace(`/listing/${listingId}?type=${navType}`);
     } catch (err: any) {
       console.error('Error submitting listing:', err);
       setError(err.message || 'Failed to post listing. Please try again.');
@@ -730,6 +852,22 @@ export default function Sell() {
             <TouchableOpacity onPress={handleBack} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
             </TouchableOpacity>
+            {isEditMode && (
+              <TouchableOpacity
+                style={styles.cancelEditButton}
+                onPress={() =>
+                  router.replace(
+                    `/listing/${editListingId}?type=${
+                      editListingType === 'buy_nothing'
+                        ? 'buy_nothing'
+                        : 'listing'
+                    }`
+                  )
+                }
+              >
+                <Text style={styles.cancelEditText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -745,7 +883,9 @@ export default function Sell() {
                 {submitting ? (
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
-                  <Text style={styles.continueButtonText}>Post listing</Text>
+                  <Text style={styles.continueButtonText}>
+                    {isEditMode ? 'Save Changes' : 'Post listing'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -759,17 +899,31 @@ export default function Sell() {
             >
               {currentStep === 1 && (
                 <View style={styles.stepContainer}>
-                  <Text style={styles.stepTitle}>What are you doing?</Text>
+                  <Text style={styles.stepTitle}>
+                    {isEditMode ? 'Edit your listing' : 'What are you doing?'}
+                  </Text>
                   <View style={styles.listingTypeContainer}>
                     <TouchableOpacity
                       style={[
                         styles.listingTypeCard,
                         form.listingType === 'shop' && styles.listingTypeCardSelected,
+                        isEditMode && form.listingType !== 'shop' && styles.typeButtonDisabled,
                       ]}
-                      onPress={() => setForm(prev => ({ ...prev, listingType: 'shop' }))}
+                      onPress={() => {
+                        if (isEditMode && form.listingType !== 'shop') {
+                          handleDisabledTypeChange('Selling');
+                          return;
+                        }
+                        setForm(prev => ({ ...prev, listingType: 'shop' }));
+                      }}
+                      activeOpacity={isEditMode && form.listingType !== 'shop' ? 1 : 0.7}
                     >
                       <Ionicons name="bag-outline" size={48} color={form.listingType === 'shop' ? '#A4C8D8' : '#999999'} />
-                      <Text style={[styles.listingTypeText, form.listingType === 'shop' && styles.listingTypeTextSelected]}>
+                      <Text style={[
+                        styles.listingTypeText,
+                        form.listingType === 'shop' && styles.listingTypeTextSelected,
+                        isEditMode && form.listingType !== 'shop' && styles.typeButtonTextDisabled,
+                      ]}>
                         Selling
                       </Text>
                     </TouchableOpacity>
@@ -777,11 +931,23 @@ export default function Sell() {
                       style={[
                         styles.listingTypeCard,
                         form.listingType === 'buy_nothing' && styles.listingTypeCardSelected,
+                        isEditMode && form.listingType !== 'buy_nothing' && styles.typeButtonDisabled,
                       ]}
-                      onPress={() => setForm(prev => ({ ...prev, listingType: 'buy_nothing' }))}
+                      onPress={() => {
+                        if (isEditMode && form.listingType !== 'buy_nothing') {
+                          handleDisabledTypeChange('Giving Away');
+                          return;
+                        }
+                        setForm(prev => ({ ...prev, listingType: 'buy_nothing' }));
+                      }}
+                      activeOpacity={isEditMode && form.listingType !== 'buy_nothing' ? 1 : 0.7}
                     >
                       <Ionicons name="gift-outline" size={48} color={form.listingType === 'buy_nothing' ? '#A4C8D8' : '#999999'} />
-                      <Text style={[styles.listingTypeText, form.listingType === 'buy_nothing' && styles.listingTypeTextSelected]}>
+                      <Text style={[
+                        styles.listingTypeText,
+                        form.listingType === 'buy_nothing' && styles.listingTypeTextSelected,
+                        isEditMode && form.listingType !== 'buy_nothing' && styles.typeButtonTextDisabled,
+                      ]}>
                         Giving Away
                       </Text>
                     </TouchableOpacity>
@@ -1264,6 +1430,15 @@ export default function Sell() {
           </>
         )}
       </KeyboardAvoidingView>
+      {typeChangeToast && (
+        <View style={styles.typeChangeToast}>
+          <Text style={styles.typeChangeToastText}>
+            To change to{' '}
+            {form.listingType === 'shop' ? 'Giving Away' : 'Selling'}{' '}
+            you must delete and recreate this listing.
+          </Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1294,6 +1469,18 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
+  },
+  cancelEditButton: {
+    position: 'absolute',
+    right: 16,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  cancelEditText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 15,
+    color: '#E05555',
   },
   scrollView: {
     flex: 1,
@@ -2016,5 +2203,30 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  typeButtonDisabled: {
+    opacity: 0.4,
+  },
+  typeButtonTextDisabled: {
+    color: '#999999',
+  },
+  typeChangeToast: {
+    position: 'absolute',
+    bottom: 32,
+    left: 24,
+    right: 24,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  typeChangeToastText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

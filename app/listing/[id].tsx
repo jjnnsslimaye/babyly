@@ -605,7 +605,13 @@ export default function ListingDetail() {
           <View style={styles.actionBar}>
             <TouchableOpacity
               style={[styles.actionButton, styles.editButton]}
-              disabled={true}
+              onPress={() =>
+                router.push(
+                  `/sell?id=${listing.id}&type=${
+                    listing.listing_type || 'listing'
+                  }`
+                )
+              }
             >
               <Text style={styles.editButtonText}>Edit Listing</Text>
             </TouchableOpacity>
@@ -968,13 +974,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   editButton: {
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#E05555',
     flex: 1,
   },
   editButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#999999',
+    color: '#FFFFFF',
     textAlign: 'center',
   },
   messageSellerButton: {
