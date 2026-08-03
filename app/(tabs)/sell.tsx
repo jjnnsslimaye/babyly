@@ -113,6 +113,11 @@ export default function Sell() {
   const [locationZip, setLocationZip] = useState('');
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
+  const [videoDurationError, setVideoDurationError] = useState(false);
+  const [sellerProfile, setSellerProfile] = useState<{
+    first_name: string;
+    avatar_url: string | null;
+  } | null>(null);
 
   const [form, setForm] = useState<ListingForm>({
     listingType: null,
@@ -144,6 +149,18 @@ export default function Sell() {
       router.replace('/login');
     }
   }, [session, loadingSession]);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    supabase
+      .from('users')
+      .select('first_name, avatar_url')
+      .eq('id', session.user.id)
+      .single()
+      .then(({ data }) => {
+        if (data) setSellerProfile(data);
+      });
+  }, [session?.user?.id]);
 
   // Load data on mount
   useEffect(() => {
@@ -338,11 +355,18 @@ export default function Sell() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      videoMaxDuration: 20,
       quality: 0.8,
     });
 
     if (!result.canceled) {
-      setForm(prev => ({ ...prev, video: result.assets[0].uri }));
+      const asset = result.assets[0];
+      if (asset.duration && asset.duration > 20000) {
+        setVideoDurationError(true);
+        return;
+      }
+      setVideoDurationError(false);
+      setForm(prev => ({ ...prev, video: asset.uri }));
       setError('');
     }
   };
@@ -408,16 +432,23 @@ export default function Sell() {
       // Upload video if present
       let videoUrl: string | null = null;
       if (form.video) {
-        const base64 = await FileSystem.readAsStringAsync(form.video, {
+        const videoExt = form.video.split('.').pop()?.toLowerCase() || 'mp4';
+        const timestamp = Date.now();
+        const filePath = `${userId}/${listingId}/${timestamp}-video.${videoExt}`;
+        const videoContentType =
+          videoExt === 'mov' ? 'video/quicktime' : `video/${videoExt}`;
+
+        const videoBase64 = await FileSystem.readAsStringAsync(form.video, {
           encoding: FileSystem.EncodingType.Base64,
         });
-        const arrayBuffer = decode(base64);
-        const timestamp = Date.now();
-        const filePath = `${userId}/${listingId}/${timestamp}-video.mp4`;
+        const videoArrayBuffer = decode(videoBase64);
 
         const { error: uploadError } = await supabase.storage
           .from('listings')
-          .upload(filePath, arrayBuffer, { contentType: 'video/mp4' });
+          .upload(filePath, videoArrayBuffer, {
+            contentType: videoContentType,
+            upsert: false,
+          });
 
         if (uploadError) throw uploadError;
 
@@ -493,7 +524,6 @@ export default function Sell() {
     ];
     const categoryName = categories.find(c => c.id === (form.subcategoryId || form.categoryId))?.name || '';
     const conditionLabel = CONDITION_LABELS.find(c => c.value === form.condition)?.label || '';
-    const sellerFirstName = session?.user?.user_metadata?.full_name?.split(' ')[0] || 'You';
 
     return (
       <View style={styles.reviewContainer}>
@@ -580,13 +610,22 @@ export default function Sell() {
           {/* Seller */}
           <Text style={styles.reviewSectionLabel}>SELLER</Text>
           <View style={styles.reviewSellerRow}>
-            <View style={styles.reviewAvatar}>
-              <Text style={styles.reviewAvatarInitials}>
-                {sellerFirstName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            {sellerProfile?.avatar_url ? (
+              <Image
+                source={{ uri: sellerProfile.avatar_url }}
+                style={styles.reviewAvatar}
+              />
+            ) : (
+              <View style={styles.reviewAvatar}>
+                <Text style={styles.reviewAvatarInitials}>
+                  {(sellerProfile?.first_name || 'Y').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
             <View style={styles.reviewSellerInfo}>
-              <Text style={styles.reviewSellerName}>You (preview)</Text>
+              <Text style={styles.reviewSellerName}>
+                {sellerProfile?.first_name || 'You'}
+              </Text>
               <Text style={styles.reviewSellerMeta}>{form.locationLabel}</Text>
             </View>
           </View>
@@ -838,10 +877,22 @@ export default function Sell() {
                         />
                         <TouchableOpacity
                           style={styles.removeVideoButton}
-                          onPress={() => setForm(prev => ({ ...prev, video: null }))}
+                          onPress={() => {
+                            setForm(prev => ({ ...prev, video: null }));
+                            setVideoDurationError(false);
+                          }}
                         >
                           <Ionicons name="close" size={20} color="#fff" />
                         </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {videoDurationError && (
+                      <View style={styles.videoDurationError}>
+                        <Ionicons name="alert-circle-outline" size={16} color="#E05555" />
+                        <Text style={styles.videoDurationErrorText}>
+                          Video must be 20 seconds or less. Please choose a shorter clip.
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -1163,7 +1214,17 @@ export default function Sell() {
                       placeholder="0.00"
                       placeholderTextColor="#CCCCCC"
                       value={form.price}
-                      onChangeText={(text) => setForm(prev => ({ ...prev, price: text }))}
+                      onChangeText={(text) => {
+                        // Strip non-numeric characters except decimal point
+                        const cleaned = text.replace(/[^0-9.]/g, '');
+                        // Prevent multiple decimal points
+                        const parts = cleaned.split('.');
+                        const formatted = parts.length > 2
+                          ? parts[0] + '.' + parts.slice(1).join('')
+                          : cleaned;
+                        // Update form with cleaned value
+                        setForm((prev) => ({ ...prev, price: formatted }));
+                      }}
                       keyboardType="decimal-pad"
                       editable={!submitting}
                     />
@@ -1449,6 +1510,24 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  videoDurationError: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#FFF5F5',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FFCCCC',
+  },
+  videoDurationErrorText: {
+    flex: 1,
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#E05555',
+    lineHeight: 18,
   },
   categoryRow: {
     flexDirection: 'row',
