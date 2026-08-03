@@ -33,6 +33,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Secrets — Firebase Admin SDK service account keys. Keep local only.
+*firebase-adminsdk*.json
+
 # typescript
 *.tsbuildinfo
 
