@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../_layout';
 import * as ImagePicker from 'expo-image-picker';
@@ -26,6 +26,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ActionSheet, { ActionSheetOption } from '../../components/ActionSheet';
+import { setLikeUpdate } from '../../lib/likeStore';
 
 const STATE_NAME_TO_ABBR: Record<string, string> = {
   'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ',
@@ -84,6 +85,7 @@ type FavoriteListing = {
   condition: string;
   distance_meters: number | null;
   liked_at: string;
+  like_count: number;
 };
 
 type ProfileQuestion = {
@@ -344,9 +346,10 @@ export default function Profile() {
   const [actionSheet, setActionSheet] = useState<{
     visible: boolean;
     title: string;
+    description?: string;
     options: ActionSheetOption[];
     showCancel?: boolean;
-  }>({ visible: false, title: '', options: [], showCancel: false });
+  }>({ visible: false, title: '', description: '', options: [], showCancel: false });
 
   const [ratingFlow, setRatingFlow] = useState<{
     visible: boolean;
@@ -401,7 +404,6 @@ export default function Profile() {
   const checkmarkScale = useRef(new Animated.Value(0)).current;
 
   const listingsFetched = useRef(false);
-  const favoritesFetched = useRef(false);
 
   // Tracks close functions for swipeable rows so only one is open at a time
   const rowCloseRefs = useRef<Map<string, () => void>>(new Map());
@@ -417,6 +419,17 @@ export default function Profile() {
       fetchListings();
     }
   }, [session?.user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (session?.user?.id) {
+        fetchProfile();
+        if (activeTab === 'favorites') {
+          fetchFavorites();
+        }
+      }
+    }, [session?.user?.id, activeTab])
+  );
 
   const fetchProfile = async () => {
     if (!session) return;
@@ -526,6 +539,13 @@ export default function Profile() {
       // Revert on failure
       setFavorites((prev) => [...prev, item]);
       setFavoritesCount((prev) => prev + 1);
+    } else {
+      setLikeUpdate({
+        listingId: item.id,
+        listingType: item.listing_type,
+        isLiked: false,
+        likeCount: Math.max(0, (item.like_count || 0) - 1),
+      });
     }
   };
 
@@ -621,20 +641,7 @@ export default function Profile() {
         });
       if (ratingError) throw ratingError;
 
-      // 3. Create notification for buyer
-      const listingTitle = listing.title;
       const sellerName = profile?.first_name || 'Someone';
-      await supabase.from('notifications').insert({
-        user_id: ratingFlow.selectedBuyer.id,
-        type: 'rating_request',
-        title: `${sellerName} rated you`,
-        body: `${sellerName} marked "${listingTitle}" as ${isBuyNothing ? 'claimed' : 'sold'} and left you a rating. Confirm the transaction to complete your rating.`,
-        data: {
-          listing_id: listing.id,
-          listing_type: listing.listing_type,
-          seller_id: session.user.id,
-        },
-      });
 
       // 4. Inject system message if conversation exists
       const { data: convData } = await supabase
@@ -726,8 +733,7 @@ export default function Profile() {
       listingsFetched.current = true;
       fetchListings();
     }
-    if (tab === 'favorites' && !favoritesFetched.current) {
-      favoritesFetched.current = true;
+    if (tab === 'favorites') {
       fetchFavorites();
     }
   };
@@ -1021,6 +1027,107 @@ export default function Profile() {
           onPress: async () => {
             await supabase.auth.signOut();
             router.replace('/(tabs)/shop');
+          },
+        },
+      ],
+    });
+  };
+
+  const handleChangePassword = () => {
+    if (!session?.user?.email) return;
+    setActionSheet({
+      visible: true,
+      title: 'Change Password',
+      description: `We'll send a password reset link to ${session.user.email}.`,
+      showCancel: true,
+      options: [
+        {
+          label: 'Send Reset Email',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.auth.resetPasswordForEmail(
+                session.user.email!
+              );
+              if (error) throw error;
+              setActionSheet((prev) => ({ ...prev, visible: false }));
+              setTimeout(() => {
+                setActionSheet({
+                  visible: true,
+                  title: 'Email Sent',
+                  description: `Check ${session.user.email} for your reset link.`,
+                  showCancel: false,
+                  options: [
+                    {
+                      label: 'OK',
+                      onPress: () =>
+                        setActionSheet((prev) => ({
+                          ...prev,
+                          visible: false,
+                        })),
+                    },
+                  ],
+                });
+              }, 300);
+            } catch (err) {
+              console.error('Error sending password reset:', err);
+              setActionSheet((prev) => ({ ...prev, visible: false }));
+            }
+          },
+        },
+      ],
+    });
+  };
+
+  const handleDeleteAccount = () => {
+    // Step 1 — warn what will be lost
+    setActionSheet({
+      visible: true,
+      title: 'Delete Account',
+      description:
+        'This will permanently delete your account, all your listings, and ratings. Your messages will remain visible to other participants but your name will be removed.',
+      showCancel: true,
+      options: [
+        {
+          label: 'Continue',
+          destructive: true,
+          onPress: () => {
+            setActionSheet((prev) => ({ ...prev, visible: false }));
+            setTimeout(() => {
+              // Step 2 — final confirmation
+              setActionSheet({
+                visible: true,
+                title: 'Are you sure?',
+                description:
+                  'Your account will be permanently deleted. You will be signed out immediately.',
+                showCancel: true,
+                options: [
+                  {
+                    label: 'Delete My Account',
+                    destructive: true,
+                    onPress: async () => {
+                      setActionSheet((prev) => ({
+                        ...prev,
+                        visible: false,
+                      }));
+                      try {
+                        const { error } = await supabase.rpc('delete_user');
+                        if (error) throw error;
+                        // Clear local session without server call
+                        // (user no longer exists in auth.users)
+                        await supabase.auth.signOut({ scope: 'local' });
+                        router.replace('/(tabs)/shop');
+                      } catch (err) {
+                        console.error('Error deleting account:', err);
+                        Alert.alert(
+                          'Error',
+                          'Could not delete your account. Please try again or contact support.'
+                        );
+                      }
+                    },
+                  },
+                ],
+              });
+            }, 300);
           },
         },
       ],
@@ -1324,7 +1431,6 @@ export default function Profile() {
           <RefreshControl
             refreshing={loadingFavorites}
             onRefresh={() => {
-              favoritesFetched.current = false;
               fetchFavorites();
             }}
             tintColor="#A4C8D8"
@@ -1565,7 +1671,7 @@ export default function Profile() {
         {isEmailUser && (
           <TouchableOpacity
             style={styles.settingsRow}
-            onPress={() => Alert.alert('Coming Soon', 'Password reset will be available in a future update.')}
+            onPress={handleChangePassword}
           >
             <Text style={styles.settingsLabel}>Change Password</Text>
             <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
@@ -1590,7 +1696,7 @@ export default function Profile() {
 
         <TouchableOpacity
           style={styles.settingsRow}
-          onPress={() => Alert.alert('Coming Soon', 'Account deletion will be available in a future update.')}
+          onPress={handleDeleteAccount}
         >
           <Text style={[styles.settingsLabel, styles.deleteAccountText]}>
             Delete Account
@@ -1638,19 +1744,41 @@ export default function Profile() {
         ) : null}
 
         {/* Ratings */}
-        <View style={styles.ratingsRow}>
-          {profile.rating_count > 0 && profile.avg_rating !== null ? (
-            <>
-              <Ionicons name="star" size={14} color="#FFB800" />
-              <Text style={styles.ratingValue}>{profile.avg_rating.toFixed(1)}</Text>
-              <Text style={styles.ratingCount}>
-                ({profile.rating_count} ratings)
-              </Text>
-            </>
-          ) : (
-            <Text style={styles.noRatingsText}>No ratings yet</Text>
-          )}
-        </View>
+        {profile.rating_count > 0 ? (
+          <TouchableOpacity
+            style={styles.ratingsRow}
+            onPress={() => router.push(`/profile/${session?.user?.id}`)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.ratingsStars}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Ionicons
+                  key={s}
+                  name={
+                    s <= Math.round(profile.avg_rating ?? 0)
+                      ? 'star'
+                      : 'star-outline'
+                  }
+                  size={14}
+                  color="#FFB800"
+                />
+              ))}
+            </View>
+            <Text style={styles.ratingAvgText}>
+              {profile.avg_rating?.toFixed(1)}
+            </Text>
+            <Text style={styles.ratingCountText}>
+              ({profile.rating_count})
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={() => router.push(`/profile/${session?.user?.id}`)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.ratingNoneText}>No ratings yet</Text>
+          </TouchableOpacity>
+        )}
 
       </View>
 
@@ -1765,6 +1893,7 @@ export default function Profile() {
       <ActionSheet
         visible={actionSheet.visible}
         title={actionSheet.title}
+        description={actionSheet.description}
         options={actionSheet.options}
         showCancel={actionSheet.showCancel}
         onClose={() => setActionSheet((prev) => ({ ...prev, visible: false }))}
@@ -2191,23 +2320,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: 4,
   },
-  ratingValue: {
+  ratingsStars: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  ratingAvgText: {
     fontFamily: 'Quicksand_700Bold',
     fontSize: 14,
     color: '#1A1A1A',
   },
-  ratingCount: {
+  ratingCountText: {
     fontFamily: 'Quicksand_600SemiBold',
-    fontSize: 12,
+    fontSize: 13,
     color: '#999999',
   },
-  noRatingsText: {
+  ratingNoneText: {
     fontFamily: 'Quicksand_600SemiBold',
     fontSize: 13,
     color: '#CCCCCC',
+    marginTop: 4,
+    textAlign: 'center',
   },
   headerDivider: {
     height: 1,
