@@ -20,7 +20,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../_layout';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { consumeLikeUpdate } from '../../lib/likeStore';
+import { consumeLikeUpdate, consumeLikeUpdates } from '../../lib/likeStore';
 
 const STATE_NAME_TO_ABBR: Record<string, string> = {
   'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ',
@@ -528,15 +528,21 @@ export default function Shop() {
 
   useFocusEffect(
     useCallback(() => {
-      const update = consumeLikeUpdate();
-      if (update && update.listingType === 'listing') {
-        setListings(prev =>
-          prev.map(l =>
-            l.id === update.listingId
-              ? { ...l, is_liked: update.isLiked, like_count: update.likeCount }
-              : l
-          )
-        );
+      const updates = consumeLikeUpdates('listing');
+      if (updates.length > 0) {
+        const listingUpdates = updates;
+        if (listingUpdates.length > 0) {
+          setListings((prev) =>
+            prev.map((l) => {
+              const update = listingUpdates.find(
+                (u) => u.listingId === l.id
+              );
+              return update
+                ? { ...l, is_liked: update.isLiked, like_count: update.likeCount }
+                : l;
+            })
+          );
+        }
       }
     }, [])
   );
@@ -719,11 +725,6 @@ export default function Shop() {
         <View style={styles.headerLeft}>
           <Ionicons name="bag-outline" size={31} color="#A4C8D8" />
           <Text style={styles.wordmark}>Shop</Text>
-        </View>
-        <View style={styles.headerIcons}>
-          <TouchableOpacity onPress={() => {}}>
-            <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
-          </TouchableOpacity>
         </View>
       </View>
 

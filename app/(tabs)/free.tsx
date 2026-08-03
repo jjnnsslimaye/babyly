@@ -20,7 +20,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../_layout';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { consumeLikeUpdate } from '../../lib/likeStore';
+import { consumeLikeUpdate, consumeLikeUpdates } from '../../lib/likeStore';
 
 type Listing = {
   id: string;
@@ -514,15 +514,21 @@ export default function BuyNothing() {
 
   useFocusEffect(
     useCallback(() => {
-      const update = consumeLikeUpdate();
-      if (update && update.listingType === 'buy_nothing') {
-        setListings(prev =>
-          prev.map(l =>
-            l.id === update.listingId
-              ? { ...l, is_liked: update.isLiked, like_count: update.likeCount }
-              : l
-          )
-        );
+      const updates = consumeLikeUpdates('buy_nothing');
+      if (updates.length > 0) {
+        const freeUpdates = updates;
+        if (freeUpdates.length > 0) {
+          setListings((prev) =>
+            prev.map((l) => {
+              const update = freeUpdates.find(
+                (u) => u.listingId === l.id
+              );
+              return update
+                ? { ...l, is_liked: update.isLiked, like_count: update.likeCount }
+                : l;
+            })
+          );
+        }
       }
     }, [])
   );
@@ -728,9 +734,6 @@ export default function BuyNothing() {
           <Ionicons name="gift-outline" size={31} color="#A4C8D8" />
           <Text style={styles.wordmark}>Buy Nothing</Text>
         </View>
-        <TouchableOpacity onPress={() => {}}>
-          <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
-        </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
