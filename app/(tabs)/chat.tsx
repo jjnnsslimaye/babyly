@@ -18,6 +18,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../_layout';
 import { setUnreadCount } from '../../lib/unreadStore';
+import NotificationBell from '../../components/NotificationBell';
 
 type Conversation = {
   id: string;
@@ -26,7 +27,7 @@ type Conversation = {
   listing_title: string;
   listing_cover_photo_url: string | null;
   listing_price: number | null;
-  other_user_id: string;
+  other_user_id: string | null;
   other_user_first_name: string;
   other_user_avatar_url: string | null;
   other_user_is_online: boolean;
@@ -195,6 +196,8 @@ export default function Chat() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [totalUnread, setTotalUnread] = useState(0);
+  const [buyingUnreadCount, setBuyingUnreadCount] = useState(0);
+  const [sellingUnreadCount, setSellingUnreadCount] = useState(0);
 
   useEffect(() => {
     if (!loadingSession && !session) {
@@ -241,6 +244,8 @@ export default function Chat() {
     const total = buyingUnread + sellingUnread;
     setTotalUnread(total);
     setUnreadCount(total);
+    setBuyingUnreadCount(buyingUnread);
+    setSellingUnreadCount(sellingUnread);
   }, [session?.user?.id]);
 
   useEffect(() => {
@@ -410,7 +415,10 @@ export default function Chat() {
   const listData = showArchived ? archivedConversations : activeConversations;
 
   const renderRow = ({ item }: { item: Conversation }) => {
-    const initial = (item.other_user_first_name || '?').charAt(0).toUpperCase();
+    const isDeletedUser = item.other_user_id === null;
+    const initial = isDeletedUser
+      ? ''
+      : (item.other_user_first_name || '?').charAt(0).toUpperCase();
     const timestamp = formatRelativeTime(item.last_message_at);
     const isMine =
       item.last_message_sender_id === session?.user?.id &&
@@ -446,7 +454,11 @@ export default function Chat() {
               />
             ) : (
               <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <Text style={styles.avatarInitial}>{initial}</Text>
+                {isDeletedUser ? (
+                  <Ionicons name="person-outline" size={20} color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.avatarInitial}>{initial}</Text>
+                )}
               </View>
             )}
             {item.other_user_is_online && <View style={styles.onlineDot} />}
@@ -455,15 +467,29 @@ export default function Chat() {
           {/* Center content */}
           <View style={styles.center}>
             <View style={styles.centerTopRow}>
-              <Text style={styles.name} numberOfLines={1}>
-                {item.other_user_first_name}
-              </Text>
+              {item.other_user_id === null ? (
+                <Text style={[styles.name, styles.deletedText]} numberOfLines={1}>
+                  Account Deleted
+                </Text>
+              ) : (
+                <Text style={styles.name} numberOfLines={1}>
+                  {item.other_user_first_name}
+                </Text>
+              )}
               {timestamp ? (
                 <Text style={styles.timestamp}>{timestamp}</Text>
               ) : null}
             </View>
-            <Text style={styles.listingTitle} numberOfLines={1}>
-              {item.listing_title}
+            <Text
+              style={[
+                styles.listingTitle,
+                item.other_user_id === null && styles.deletedListingTitle,
+              ]}
+              numberOfLines={1}
+            >
+              {item.other_user_id === null
+                ? 'Listing Unavailable'
+                : item.listing_title}
             </Text>
             <Text
               style={[
@@ -520,6 +546,9 @@ export default function Chat() {
           <Ionicons name="chatbubble-outline" size={31} color="#A4C8D8" />
           <Text style={styles.wordmark}>Messages</Text>
         </View>
+        {session?.user?.id && (
+          <NotificationBell userId={session.user.id} />
+        )}
       </View>
 
       {/* Search */}
@@ -544,38 +573,56 @@ export default function Chat() {
 
       {/* Buying / Selling toggle */}
       <View style={styles.toggleRow}>
-        <TouchableOpacity
-          style={[
-            styles.togglePill,
-            activeRole === 'buying' && styles.togglePillActive,
-          ]}
-          onPress={() => handleRoleChange('buying')}
-        >
-          <Text
+        <View style={{ position: 'relative' }}>
+          <TouchableOpacity
             style={[
-              styles.togglePillText,
-              activeRole === 'buying' && styles.togglePillTextActive,
+              styles.togglePill,
+              activeRole === 'buying' && styles.togglePillActive,
             ]}
+            onPress={() => handleRoleChange('buying')}
           >
-            Buying
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.togglePill,
-            activeRole === 'selling' && styles.togglePillActive,
-          ]}
-          onPress={() => handleRoleChange('selling')}
-        >
-          <Text
+            <Text
+              style={[
+                styles.togglePillText,
+                activeRole === 'buying' && styles.togglePillTextActive,
+              ]}
+            >
+              Buying
+            </Text>
+          </TouchableOpacity>
+          {buyingUnreadCount > 0 && (
+            <View style={styles.pillBadge}>
+              <Text style={styles.pillBadgeText}>
+                {buyingUnreadCount > 9 ? '9+' : buyingUnreadCount}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View style={{ position: 'relative' }}>
+          <TouchableOpacity
             style={[
-              styles.togglePillText,
-              activeRole === 'selling' && styles.togglePillTextActive,
+              styles.togglePill,
+              activeRole === 'selling' && styles.togglePillActive,
             ]}
+            onPress={() => handleRoleChange('selling')}
           >
-            Selling
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.togglePillText,
+                activeRole === 'selling' && styles.togglePillTextActive,
+              ]}
+            >
+              Selling
+            </Text>
+          </TouchableOpacity>
+          {sellingUnreadCount > 0 && (
+            <View style={styles.pillBadge}>
+              <Text style={styles.pillBadgeText}>
+                {sellingUnreadCount > 9 ? '9+' : sellingUnreadCount}
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {/* List */}
@@ -694,6 +741,28 @@ const styles = StyleSheet.create({
   togglePillActive: {
     backgroundColor: '#A4C8D8',
   },
+  pillBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#E05555',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  pillBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontFamily: 'Quicksand_700Bold',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    lineHeight: 12,
+  },
   togglePillText: {
     fontFamily: 'Quicksand_700Bold',
     fontSize: 13,
@@ -804,6 +873,14 @@ const styles = StyleSheet.create({
     color: '#A4C8D8',
     marginTop: 2,
   },
+  deletedText: {
+    fontStyle: 'italic',
+    color: '#999999',
+  },
+  deletedListingTitle: {
+    fontStyle: 'italic',
+    color: '#A4C8D8',
+  },
   preview: {
     fontFamily: 'Quicksand_600SemiBold',
     fontSize: 13,
@@ -830,7 +907,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     paddingHorizontal: 6,
-    backgroundColor: '#A4C8D8',
+    backgroundColor: '#E05555',
     alignItems: 'center',
     justifyContent: 'center',
   },
