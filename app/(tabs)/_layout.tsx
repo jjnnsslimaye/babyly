@@ -45,7 +45,7 @@ function CustomTabBar(props: any) {
                   router.push('/login');
                   return;
                 }
-                router.push('/sell');
+                router.push('/create-listing');
               }}
               style={styles.sellButtonContainer}
             >
@@ -114,6 +114,7 @@ function CustomTabBar(props: any) {
 }
 
 export default function TabsLayout() {
+  const router = useRouter();
   return (
     <Tabs
       screenOptions={{
@@ -154,8 +155,16 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="sell"
         options={{
-          title: '',
-          tabBarIcon: () => null,
+          title: 'Sell',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="add-circle-outline" size={size} color={color} />
+          ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push('/create-listing');
+          },
         }}
       />
       <Tabs.Screen
