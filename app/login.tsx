@@ -371,13 +371,13 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   wordmark: {
-    fontFamily: 'Quicksand_600SemiBold',
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 36,
-    fontWeight: '600',
     color: '#A4C8D8',
     marginBottom: 8,
   },
   tagline: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
     color: '#999999',
     textAlign: 'center',
@@ -386,6 +386,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   input: {
+    fontFamily: 'Quicksand_600SemiBold',
     height: 52,
     borderWidth: 1,
     borderColor: '#E0E0E0',
@@ -400,6 +401,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   passwordInput: {
+    fontFamily: 'Quicksand_600SemiBold',
     height: 52,
     borderWidth: 1,
     borderColor: '#E0E0E0',
@@ -417,8 +419,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   errorText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
-    color: '#E53935',
+    color: '#E05555',
     marginBottom: 16,
     marginTop: 8,
   },
@@ -441,6 +444,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   forgotPasswordText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
     color: '#A4C8D8',
   },
@@ -455,6 +459,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E0E0',
   },
   dividerText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 12,
     color: '#999999',
     marginHorizontal: 12,
@@ -472,6 +477,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   socialButtonText: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 16,
     fontWeight: '600',
     color: '#1A1A1A',

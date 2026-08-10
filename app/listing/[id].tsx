@@ -474,16 +474,32 @@ export default function ListingDetail() {
         </View>
 
         {/* Category and Condition */}
+        {/* Category and Condition Pills */}
         <View style={styles.categoryConditionRow}>
-          <Text style={styles.categoryConditionText}>
-            {(listing.category_name ?? 'Uncategorised').toUpperCase()} • {formatCondition(listing.condition).toUpperCase()}
-          </Text>
+          <View style={styles.attributePill}>
+            <Text style={styles.attributePillText}>
+              {listing.category_name ?? 'Uncategorised'}
+            </Text>
+          </View>
+          <View style={styles.attributePill}>
+            <Text style={styles.attributePillText}>
+              {formatCondition(listing.condition)}
+            </Text>
+          </View>
+          {listing.attributes && Object.keys(listing.attributes).length > 0 &&
+            Object.entries(listing.attributes).map(([key, value]) => (
+              value ? (
+                <View key={key} style={styles.attributePill}>
+                  <Text style={styles.attributePillText}>{String(value)}</Text>
+                </View>
+              ) : null
+            ))
+          }
         </View>
 
         <View style={styles.divider} />
 
         {/* Description Section */}
-        <Text style={styles.sectionLabel}>DESCRIPTION</Text>
         <Text style={styles.descriptionText}>{listing.description}</Text>
 
         <View style={styles.divider} />
@@ -607,8 +623,8 @@ export default function ListingDetail() {
               style={[styles.actionButton, styles.editButton]}
               onPress={() =>
                 router.push(
-                  `/sell?id=${listing.id}&type=${
-                    listing.listing_type || 'listing'
+                  `/create-listing?id=${listing.id}&type=${
+                    type === 'buy_nothing' ? 'buy_nothing' : 'listing'
                   }`
                 )
               }
@@ -674,6 +690,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   errorText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 18,
     fontWeight: '600',
     color: '#1A1A1A',
@@ -686,6 +703,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   backButtonText: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
@@ -748,7 +766,8 @@ const styles = StyleSheet.create({
   },
   titlePriceRow: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 20,
+    paddingBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -762,6 +781,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   price: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 24,
     fontWeight: '700',
     color: '#A4C8D8',
@@ -776,20 +796,28 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   freeText: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 20,
     fontWeight: '700',
     color: '#ffffff',
   },
   categoryConditionRow: {
     paddingHorizontal: 16,
-    paddingTop: 4,
     paddingBottom: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
-  categoryConditionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#999999',
-    letterSpacing: 0.3,
+  attributePill: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  attributePillText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 12,
+    color: '#666666',
   },
   priceAndStatusRow: {
     flexDirection: 'row',
@@ -808,19 +836,18 @@ const styles = StyleSheet.create({
     color: '#FF9500',
   },
   divider: {
-    height: 8,
-    backgroundColor: '#F7F7F7',
-    marginHorizontal: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#E8E8E8',
+    marginHorizontal: 16,
   },
   sectionLabel: {
-    fontFamily: 'Quicksand_600SemiBold',
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 11,
-    fontWeight: '700',
-    color: '#999999',
-    letterSpacing: 0.8,
+    color: '#BBBBBB',
+    letterSpacing: 1,
     paddingHorizontal: 16,
     paddingTop: 20,
-    paddingBottom: 12,
+    paddingBottom: 10,
   },
   sellerRow: {
     paddingHorizontal: 16,
@@ -847,6 +874,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarInitialsText: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 18,
     fontWeight: '700',
     color: '#ffffff',
@@ -855,11 +883,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sellerName: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 16,
     fontWeight: '600',
     color: '#1A1A1A',
   },
   sellerMeta: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 13,
     color: '#999999',
     marginTop: 2,
@@ -894,12 +924,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   locationText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 15,
     color: '#1A1A1A',
   },
   descriptionText: {
+    fontFamily: 'Quicksand_600SemiBold',
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
     fontSize: 15,
     color: '#444444',
     lineHeight: 22,
@@ -912,10 +945,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   detailLabel: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 13,
     color: '#999999',
   },
   detailValue: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 15,
     color: '#1A1A1A',
   },
@@ -935,10 +970,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   paymentPillText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 13,
     color: '#1A1A1A',
   },
   reportLink: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 13,
     color: '#CCCCCC',
     textDecorationLine: 'underline',
@@ -974,10 +1011,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   editButton: {
-    backgroundColor: '#E05555',
+    backgroundColor: '#A4C8D8',
     flex: 1,
   },
   editButtonText: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',

@@ -1299,6 +1299,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   searchInput: {
+    fontFamily: 'Quicksand_600SemiBold',
     flex: 1,
     fontSize: 15,
     color: '#1A1A1A',
@@ -1321,6 +1322,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   locationText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
     fontWeight: '500',
     color: '#1A1A1A',
@@ -1425,6 +1427,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   featuredText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 11,
     fontWeight: '600',
     color: '#ffffff',
@@ -1453,6 +1456,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   priceText: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 13,
     fontWeight: '700',
     color: '#1A1A1A',
@@ -1474,6 +1478,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   listingTitle: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 14,
     fontWeight: '600',
     color: '#1A1A1A',
@@ -1485,6 +1490,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   conditionText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 11,
     fontWeight: '600',
     color: '#999999',
@@ -1496,6 +1502,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   distanceText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 11,
     color: '#999999',
   },
@@ -1509,12 +1516,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyStateTitle: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 18,
     fontWeight: '600',
     color: '#1A1A1A',
     marginTop: 16,
   },
   emptyStateSubtitle: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
     color: '#999999',
     marginTop: 8,
@@ -1524,9 +1533,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#A4C8D8',
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 24,
+    borderRadius: 12,
   },
   emptyStateButtonText: {
+    fontFamily: 'Quicksand_700Bold',
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
@@ -1545,10 +1555,12 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0F0',
   },
   resetButton: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 15,
     color: '#A4C8D8',
   },
   modalTitle: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 17,
     fontWeight: '600',
     color: '#1A1A1A',
@@ -1557,6 +1569,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   filterSectionLabel: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 12,
     fontWeight: '600',
     color: '#999999',
@@ -1584,6 +1597,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F7FA',
   },
   filterChipText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
     color: '#1A1A1A',
   },
@@ -1613,11 +1627,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   priceInputLabel: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 12,
     color: '#999999',
     marginBottom: 6,
   },
   priceInput: {
+    fontFamily: 'Quicksand_600SemiBold',
     backgroundColor: '#F7F7F7',
     borderRadius: 8,
     paddingHorizontal: 12,
@@ -1637,6 +1653,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   brandPickerText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 15,
     color: '#CCCCCC',
   },
@@ -1644,6 +1661,7 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
   },
   clearBrandText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 13,
     color: '#A4C8D8',
     marginHorizontal: 20,
@@ -1680,6 +1698,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   brandSearchInput: {
+    fontFamily: 'Quicksand_600SemiBold',
     flex: 1,
     fontSize: 16,
     color: '#1A1A1A',
@@ -1690,8 +1709,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F8F8',
   },
   brandClearText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
-    color: '#E53935',
+    color: '#E05555',
   },
   brandRow: {
     flexDirection: 'row',
@@ -1704,6 +1724,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F7FA',
   },
   brandRowText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 16,
     color: '#1A1A1A',
   },
@@ -1731,10 +1752,12 @@ const styles = StyleSheet.create({
     borderColor: '#A4C8D8',
   },
   radiusPillText: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
     color: '#666666',
   },
   radiusPillTextSelected: {
+    fontFamily: 'Quicksand_600SemiBold',
     fontSize: 14,
     fontWeight: '600',
     color: '#ffffff',
@@ -1747,6 +1770,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   showResultsText: {
+    fontFamily: 'Quicksand_700Bold',
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
@@ -1764,6 +1788,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   gpsButtonText: {
+    fontFamily: 'Quicksand_700Bold',
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
@@ -1776,6 +1801,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   zipInput: {
+    fontFamily: 'Quicksand_600SemiBold',
     flex: 1,
     height: 48,
     borderWidth: 1,
@@ -1798,11 +1824,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#CCCCCC',
   },
   zipSubmitText: {
+    fontFamily: 'Quicksand_700Bold',
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
   },
   zipError: {
+    fontFamily: 'Quicksand_600SemiBold',
     color: '#E05555',
     fontSize: 13,
     marginHorizontal: 16,
