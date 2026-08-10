@@ -72,6 +72,7 @@ type MyListing = {
   status: string;
   category_name: string | null;
   created_at: string;
+  pre_archive_status: string | null;
 };
 
 type FavoriteListing = {
@@ -1149,7 +1150,7 @@ export default function Profile() {
     if (canEdit) {
       options.push({
         label: 'Edit listing',
-        onPress: () => router.push(`/sell?id=${listing.id}&type=${listing.listing_type}`),
+        onPress: () => router.push(`/create-listing?id=${listing.id}&type=${listing.listing_type}`),
       });
     }
 
@@ -1182,9 +1183,17 @@ export default function Profile() {
     } else if (status === 'claimed') {
       // Terminal status — no further transitions
     } else if (status === 'archived') {
+      const restoreStatus = listing.pre_archive_status || 'available';
+      const restoreLabel = restoreStatus === 'sold'
+        ? 'Relist as Sold'
+        : restoreStatus === 'claimed'
+        ? 'Relist as Claimed'
+        : restoreStatus === 'pending'
+        ? 'Relist as Pending'
+        : 'Relist as Available';
       options.push({
-        label: 'Relist as Available',
-        onPress: () => handleUpdateStatus(listing, 'available'),
+        label: restoreLabel,
+        onPress: () => handleUpdateStatus(listing, restoreStatus),
       });
     }
 
@@ -1217,9 +1226,24 @@ export default function Profile() {
         ? 'listings'
         : 'buy_nothing_listings';
 
+    const isArchiving = newStatus === 'archived';
+    const isUnarchiving = listing.status === 'archived' && newStatus !== 'archived';
+
+    let updateData: Record<string, any> = { status: newStatus };
+
+    if (isArchiving) {
+      // Store current status before archiving
+      updateData.pre_archive_status = listing.status;
+    }
+
+    if (isUnarchiving) {
+      // Clear pre_archive_status after restoring
+      updateData.pre_archive_status = null;
+    }
+
     const { error } = await supabase
       .from(table)
-      .update({ status: newStatus })
+      .update(updateData)
       .eq('id', listing.id);
 
     if (error) {
@@ -1229,9 +1253,13 @@ export default function Profile() {
     }
 
     setListings((prev) =>
-      prev.map((l) =>
-        l.id === listing.id ? { ...l, status: newStatus } : l
-      )
+      prev.map((l) => {
+        if (l.id !== listing.id) return l;
+        const patch: Partial<MyListing> = { ...l, status: newStatus };
+        if (isArchiving) patch.pre_archive_status = listing.status;
+        if (isUnarchiving) patch.pre_archive_status = null;
+        return patch as MyListing;
+      })
     );
   };
 
@@ -1320,7 +1348,7 @@ export default function Profile() {
             ? 'Relist'
             : 'Archive';
           const archiveValue = item.status === 'archived'
-            ? 'available'
+            ? (item.pre_archive_status || 'available')
             : 'archived';
 
           return (
@@ -2709,7 +2737,7 @@ const styles = StyleSheet.create({
   },
   answerSaveButton: {
     backgroundColor: '#A4C8D8',
-    borderRadius: 8,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 6,
     minWidth: 64,

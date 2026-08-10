@@ -257,7 +257,6 @@ export default function PublicSellerProfile() {
     return (
       <TouchableOpacity
         key={`${listing.listing_type}_${listing.id}`}
-        style={styles.gridCell}
         onPress={() => openListing(listing)}
         activeOpacity={0.85}
       >
@@ -443,178 +442,177 @@ export default function PublicSellerProfile() {
 
       {/* Tab content */}
       {activeTab === 'ratings' && (
-        <ScrollView
+        <FlatList
+          data={sortedRatings}
+          keyExtractor={(item) => item.id}
           style={[styles.tabContent, { backgroundColor: '#FFFFFF' }]}
-          contentContainerStyle={[styles.tabContentPad, { padding: 0 }]}
           showsVerticalScrollIndicator={false}
-        >
-          {/* Sort pills */}
-          <View style={styles.sortPillsRow}>
-            {(['newest', 'highest', 'lowest'] as const).map((sort) => (
-              <TouchableOpacity
-                key={sort}
-                style={[
-                  styles.sortPill,
-                  ratingSort === sort && styles.sortPillActive,
-                ]}
-                onPress={() => setRatingSort(sort)}
-              >
-                <Text
+          ListHeaderComponent={
+            <View style={styles.sortPillsRow}>
+              {(['newest', 'highest', 'lowest'] as const).map((sort) => (
+                <TouchableOpacity
+                  key={sort}
                   style={[
-                    styles.sortPillText,
-                    ratingSort === sort && styles.sortPillTextActive,
+                    styles.sortPill,
+                    ratingSort === sort && styles.sortPillActive,
                   ]}
+                  onPress={() => setRatingSort(sort)}
                 >
-                  {sort.charAt(0).toUpperCase() + sort.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {sortedRatings.length === 0 ? (
+                  <Text
+                    style={[
+                      styles.sortPillText,
+                      ratingSort === sort && styles.sortPillTextActive,
+                    ]}
+                  >
+                    {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          }
+          ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="star-outline" size={40} color="#CCCCCC" />
               <Text style={styles.emptyStateText}>No ratings yet</Text>
             </View>
-          ) : (
-            sortedRatings.map((r, index) => (
-              <View key={r.id}>
-                <View style={styles.ratingRow}>
-                  <View style={styles.ratingRowInner}>
-                    <View style={styles.ratingRowLeft}>
-                      {/* Reviewer name + avatar */}
-                      <View style={styles.raterHeaderRow}>
-                        {r.rater_avatar_url ? (
-                          <Image
-                            source={{ uri: r.rater_avatar_url }}
-                            style={styles.raterAvatar}
-                          />
-                        ) : (
-                          <View
-                            style={[
-                              styles.raterAvatar,
-                              styles.raterAvatarPlaceholder,
-                            ]}
-                          >
-                            <Text style={styles.raterInitial}>
-                              {r.rater_first_name.charAt(0)}
-                            </Text>
-                          </View>
-                        )}
-                        <Text style={styles.raterName}>
-                          {r.rater_first_name}
-                        </Text>
-                      </View>
-
-                      {/* Stars + role + date */}
-                      <View style={styles.ratingMetaRow}>
-                        <View style={styles.ratingStarsRow}>
-                          {[1, 2, 3, 4, 5].map((s) => (
-                            <Ionicons
-                              key={s}
-                              name={s <= r.rating ? 'star' : 'star-outline'}
-                              size={13}
-                              color="#FFB800"
-                            />
-                          ))}
-                        </View>
-                        <Text style={styles.ratingMeta}>
-                          {r.role === 'seller' ? 'Seller' : 'Buyer'} ·{' '}
-                          {formatRatingDate(r.rated_at)}
-                        </Text>
-                        <View style={styles.ratingTypeCluster}>
-                          <Text style={styles.ratingMeta}>·</Text>
-                          <Ionicons
-                            name={
-                              r.listing_type === 'buy_nothing'
-                                ? 'gift-outline'
-                                : 'bag-outline'
-                            }
-                            size={12}
-                            color="#999999"
-                          />
-                        </View>
-                      </View>
-
-                      {/* Comment */}
-                      {r.comment ? (
-                        <Text style={styles.ratingComment}>"{r.comment}"</Text>
-                      ) : null}
-
-                      {/* Tags */}
-                      {r.tags && r.tags.length > 0 && (
-                        <View style={styles.ratingTagsRow}>
-                          {r.tags.map((tag) => (
-                            <View key={tag} style={styles.ratingTagPill}>
-                              <Text style={styles.ratingTagText}>
-                                {tagLabels[tag] || tag}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Listing thumbnail — right aligned */}
-                    <TouchableOpacity
-                      style={styles.ratingThumbButton}
-                      onPress={() => openListing({
-                        id: r.listing_id,
-                        listing_type: r.listing_type as 'listing' | 'buy_nothing',
-                        title: r.listing_title,
-                        price: null,
-                        cover_photo_url: r.listing_cover_photo_url,
-                        status: 'sold',
-                        condition: '',
-                        distance_meters: null,
-                      })}
-                      activeOpacity={0.7}
-                    >
-                      {r.listing_cover_photo_url ? (
-                        <Image
-                          source={{ uri: r.listing_cover_photo_url }}
-                          style={styles.ratingThumb}
-                        />
-                      ) : (
-                        <View style={styles.ratingThumbPlaceholder} />
-                      )}
-                      <Ionicons
-                        name="chevron-forward"
-                        size={12}
-                        color="#CCCCCC"
-                        style={styles.ratingThumbChevron}
+          }
+          ItemSeparatorComponent={() => (
+            <View style={styles.ratingDivider} />
+          )}
+          renderItem={({ item: r }) => (
+            <View style={styles.ratingRow}>
+              <View style={styles.ratingRowInner}>
+                <View style={styles.ratingRowLeft}>
+                  {/* Reviewer name + avatar */}
+                  <View style={styles.raterHeaderRow}>
+                    {r.rater_avatar_url ? (
+                      <Image
+                        source={{ uri: r.rater_avatar_url }}
+                        style={styles.raterAvatar}
                       />
-                    </TouchableOpacity>
+                    ) : (
+                      <View
+                        style={[
+                          styles.raterAvatar,
+                          styles.raterAvatarPlaceholder,
+                        ]}
+                      >
+                        <Text style={styles.raterInitial}>
+                          {r.rater_first_name.charAt(0)}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={styles.raterName}>
+                      {r.rater_first_name}
+                    </Text>
                   </View>
+
+                  {/* Stars + role + date + type icon */}
+                  <View style={styles.ratingMetaRow}>
+                    <View style={styles.ratingStarsRow}>
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Ionicons
+                          key={s}
+                          name={s <= r.rating ? 'star' : 'star-outline'}
+                          size={13}
+                          color="#FFB800"
+                        />
+                      ))}
+                    </View>
+                    <Text style={styles.ratingMeta}>
+                      {r.role === 'seller' ? 'Seller' : 'Buyer'} ·{' '}
+                      {formatRatingDate(r.rated_at)}
+                    </Text>
+                    <View style={styles.ratingTypeCluster}>
+                      <Text style={styles.ratingMeta}>·</Text>
+                      <Ionicons
+                        name={
+                          r.listing_type === 'buy_nothing'
+                            ? 'gift-outline'
+                            : 'bag-outline'
+                        }
+                        size={12}
+                        color="#999999"
+                      />
+                    </View>
+                  </View>
+
+                  {/* Comment */}
+                  {r.comment ? (
+                    <Text style={styles.ratingComment}>"{r.comment}"</Text>
+                  ) : null}
+
+                  {/* Tags */}
+                  {r.tags && r.tags.length > 0 && (
+                    <View style={styles.ratingTagsRow}>
+                      {r.tags.map((tag) => (
+                        <View key={tag} style={styles.ratingTagPill}>
+                          <Text style={styles.ratingTagText}>
+                            {tagLabels[tag] || tag}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
 
-                {/* Divider between entries */}
-                {index < sortedRatings.length - 1 && (
-                  <View style={styles.ratingDivider} />
-                )}
+                {/* Listing thumbnail */}
+                <TouchableOpacity
+                  style={styles.ratingThumbButton}
+                  onPress={() => openListing({
+                    id: r.listing_id,
+                    listing_type: r.listing_type as 'listing' | 'buy_nothing',
+                    title: r.listing_title,
+                    price: null,
+                    cover_photo_url: r.listing_cover_photo_url,
+                    status: 'sold',
+                    condition: '',
+                    distance_meters: null,
+                  })}
+                  activeOpacity={0.7}
+                >
+                  {r.listing_cover_photo_url ? (
+                    <Image
+                      source={{ uri: r.listing_cover_photo_url }}
+                      style={styles.ratingThumb}
+                    />
+                  ) : (
+                    <View style={styles.ratingThumbPlaceholder} />
+                  )}
+                  <Ionicons
+                    name="chevron-forward"
+                    size={12}
+                    color="#CCCCCC"
+                    style={styles.ratingThumbChevron}
+                  />
+                </TouchableOpacity>
               </View>
-            ))
+            </View>
           )}
-        </ScrollView>
+        />
       )}
 
       {activeTab === 'listings' && (
-        <ScrollView
+        <FlatList
+          data={listings}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
           style={styles.tabContent}
           contentContainerStyle={styles.tabContentPad}
           showsVerticalScrollIndicator={false}
-        >
-          {listings.length === 0 ? (
+          columnWrapperStyle={{ gap: 8 }}
+          ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="bag-outline" size={40} color="#CCCCCC" />
               <Text style={styles.emptyStateText}>No active listings</Text>
             </View>
-          ) : (
-            <View style={styles.grid}>
-              {listings.map(renderListingCard)}
+          }
+          renderItem={({ item }) => (
+            <View style={styles.gridCell}>
+              {renderListingCard(item)}
             </View>
           )}
-        </ScrollView>
+        />
       )}
 
       {activeTab === 'bio' && (
@@ -667,11 +665,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 3,
   },
 
   // ─── Profile header ───────────────────────────────────────
@@ -798,7 +791,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontFamily: 'Quicksand_600SemiBold',
-    fontSize: 11,
+    fontSize: 12,
     color: '#999999',
   },
   tabLabelActive: {
@@ -1012,7 +1005,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   gridCell: {
-    width: '48%',
+    flex: 1,
   },
   listingCard: {
     backgroundColor: '#FFFFFF',
