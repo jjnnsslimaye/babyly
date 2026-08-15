@@ -14,6 +14,7 @@ import {
   Animated,
   PanResponder,
   RefreshControl,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -425,6 +426,7 @@ export default function Profile() {
     useCallback(() => {
       if (session?.user?.id) {
         fetchProfile();
+        fetchListings();
       }
     }, [session?.user?.id])
   );
@@ -1108,6 +1110,63 @@ export default function Profile() {
                         visible: false,
                       }));
                       try {
+                        const userId = session?.user?.id;
+
+                        if (userId) {
+                          // ── Clean up Storage files ──────────────────
+                          // listings bucket: <userId>/<listingId>/<file>
+                          try {
+                            const { data: listingFolders } =
+                              await supabase.storage
+                                .from('listings')
+                                .list(userId, { limit: 1000 });
+
+                            if (listingFolders && listingFolders.length > 0) {
+                              const allListingPaths: string[] = [];
+                              for (const folder of listingFolders) {
+                                const { data: files } =
+                                  await supabase.storage
+                                    .from('listings')
+                                    .list(`${userId}/${folder.name}`);
+                                if (files) {
+                                  files.forEach((f) =>
+                                    allListingPaths.push(
+                                      `${userId}/${folder.name}/${f.name}`
+                                    )
+                                  );
+                                }
+                              }
+                              if (allListingPaths.length > 0) {
+                                await supabase.storage
+                                  .from('listings')
+                                  .remove(allListingPaths);
+                              }
+                            }
+                          } catch (err) {
+                            console.error('Listings storage cleanup error:', err);
+                          }
+
+                          // avatars bucket: <userId>/<file>
+                          try {
+                            const { data: avatarFiles } =
+                              await supabase.storage
+                                .from('avatars')
+                                .list(userId, { limit: 100 });
+
+                            if (avatarFiles && avatarFiles.length > 0) {
+                              const avatarPaths = avatarFiles.map(
+                                (f) => `${userId}/${f.name}`
+                              );
+                              await supabase.storage
+                                .from('avatars')
+                                .remove(avatarPaths);
+                            }
+                          } catch (err) {
+                            console.error('Avatar storage cleanup error:', err);
+                          }
+                        }
+
+                        // ── Delete account ───────────────────────────
                         const { error } = await supabase.rpc('delete_user');
                         if (error) throw error;
                         // Clear local session without server call
@@ -1711,6 +1770,30 @@ export default function Profile() {
           onPress={() => router.push('/about')}
         >
           <Text style={styles.settingsLabel}>About Babyly</Text>
+          <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.settingsRow}
+          onPress={() => Linking.openURL('https://babylyapp.com/privacy')}
+        >
+          <Text style={styles.settingsLabel}>Privacy Policy</Text>
+          <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.settingsRow}
+          onPress={() => Linking.openURL('https://babylyapp.com/terms')}
+        >
+          <Text style={styles.settingsLabel}>Terms of Service</Text>
+          <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.settingsRow}
+          onPress={() => Linking.openURL('https://babylyapp.com/support')}
+        >
+          <Text style={styles.settingsLabel}>Support</Text>
           <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
         </TouchableOpacity>
 
