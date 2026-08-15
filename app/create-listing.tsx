@@ -119,6 +119,10 @@ export default function Sell() {
     first_name: string;
     avatar_url: string | null;
   } | null>(null);
+  const [originalPhotoUrls, setOriginalPhotoUrls] =
+    useState<string[]>([]);
+  const [originalVideoUrl, setOriginalVideoUrl] =
+    useState<string | null>(null);
 
   const params = useLocalSearchParams<{
     id?: string;
@@ -234,6 +238,9 @@ export default function Sell() {
         location,
         locationLabel: data.location_label || null,
       });
+
+      setOriginalPhotoUrls(photoUrls);
+      setOriginalVideoUrl(videoItem?.url || null);
 
       // Skip to step 2 (photos) so user sees pre-populated data
       // Step 1 is listing type which is already set
@@ -476,6 +483,17 @@ export default function Sell() {
     }));
   };
 
+  const extractStoragePath = (url: string): string | null => {
+    // Extract path from Supabase Storage public URL
+    // URL format: https://<project>.supabase.co/storage/v1/object/public/listings/<path>
+    try {
+      const match = url.match(/\/storage\/v1\/object\/public\/listings\/(.+)/);
+      return match ? match[1] : null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleSubmit = async () => {
     if (!session) return;
 
@@ -599,6 +617,39 @@ export default function Sell() {
           .from('listing_media')
           .delete()
           .eq('listing_id', listingId);
+
+        // Delete orphaned photos from Storage (batched)
+        try {
+          const removedPhotos = originalPhotoUrls.filter(
+            (url) => !form.photos.includes(url)
+          );
+          const pathsToRemove = removedPhotos
+            .map((url) => extractStoragePath(url))
+            .filter((path): path is string => path !== null);
+          if (pathsToRemove.length > 0) {
+            await supabase.storage.from('listings').remove(pathsToRemove);
+          }
+        } catch (err) {
+          console.error('Error removing orphaned photos:', err);
+          // Non-blocking — edit succeeds even if cleanup fails
+        }
+
+        // Delete orphaned video from Storage
+        try {
+          if (
+            originalVideoUrl &&
+            originalVideoUrl !== form.video &&
+            originalVideoUrl.startsWith('http')
+          ) {
+            const path = extractStoragePath(originalVideoUrl);
+            if (path) {
+              await supabase.storage.from('listings').remove([path]);
+            }
+          }
+        } catch (err) {
+          console.error('Error removing orphaned video:', err);
+          // Non-blocking — edit succeeds even if cleanup fails
+        }
       }
 
       // Insert media rows
@@ -626,7 +677,14 @@ export default function Sell() {
       if (mediaError) throw mediaError;
 
       const navType = form.listingType === 'shop' ? 'listing' : 'buy_nothing';
-      router.replace(`/listing/${listingId}?type=${navType}`);
+      if (isEditMode) {
+        // Clear the stack (removes old listing detail + create-listing)
+        // then push fresh listing detail
+        router.dismissAll();
+        router.push(`/listing/${listingId}?type=${navType}`);
+      } else {
+        router.replace(`/listing/${listingId}?type=${navType}`);
+      }
     } catch (err: any) {
       console.error('Error submitting listing:', err);
       setError(err.message || 'Failed to post listing. Please try again.');
@@ -690,7 +748,7 @@ export default function Sell() {
 
           {/* Floating back button over carousel */}
           <TouchableOpacity
-            style={styles.reviewFloatingBack}
+            style={[styles.reviewFloatingBack, { top: insets.top + 12 }]}
             onPress={handleBack}
           >
             <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
@@ -831,7 +889,10 @@ export default function Sell() {
     : brands;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView
+      style={styles.container}
+      edges={currentStep === 9 ? [] : ['top']}
+    >
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
