@@ -20,6 +20,7 @@ import {
 import Constants from 'expo-constants';
 import { setPendingGoogleProfile } from '../lib/pendingGoogleProfile';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import GoogleLogo from '../components/GoogleLogo';
 
 export default function Login() {
@@ -81,7 +82,12 @@ export default function Login() {
       setError('');
 
       await GoogleSignin.hasPlayServices();
-      const userInfo = await GoogleSignin.signIn();
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce
+      );
+      const userInfo = await GoogleSignin.signIn({ nonce: hashedNonce });
       const idToken = userInfo.data?.idToken;
 
       if (!idToken) {
@@ -93,6 +99,7 @@ export default function Login() {
       const { data, error: supabaseError } = await supabase.auth.signInWithIdToken({
         provider: 'google',
         token: idToken,
+        nonce: rawNonce,
       });
 
       if (supabaseError) {
