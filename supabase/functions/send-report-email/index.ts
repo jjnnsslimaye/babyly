@@ -91,8 +91,8 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${Deno.env.get('RESEND_API_KEY')}`,
       },
       body: JSON.stringify({
-        from: 'onboarding@resend.dev',
-        to: 'app.babyly@gmail.com',
+        from: 'Babyly <reports@babylyapp.com>',
+        to: 'team@babylyapp.com',
         subject,
         html: body,
       }),
