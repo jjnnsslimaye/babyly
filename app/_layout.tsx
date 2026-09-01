@@ -6,9 +6,11 @@ import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { getPendingGoogleProfile, clearPendingGoogleProfile } from '../lib/pendingGoogleProfile';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 type AuthContextType = {
   session: Session | null;
@@ -59,6 +61,19 @@ export default function RootLayout() {
           if (event === 'SIGNED_IN' && session?.user?.id) {
             registerPushToken(session.user.id);
           }
+          if (event === 'SIGNED_OUT') {
+            // Clear per-user location cache so the next signed-in
+            // account doesn't inherit the previous user's location.
+            AsyncStorage.multiRemove([
+              'babyly_user_lat',
+              'babyly_user_lng',
+              'babyly_location_label',
+              'babyly_radius_meters',
+              'babyly_location_setup_complete',
+            ]).catch((err) =>
+              console.error('Location cache clear failed:', err)
+            );
+          }
         }
       }
     );
@@ -67,6 +82,14 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // Replay any queued cold-start deep link
+    // now that auth is resolved
+    if (!loadingSession && session && pendingDeepLink.current) {
+      const data = pendingDeepLink.current;
+      pendingDeepLink.current = null;
+      handleNotificationDeepLink(data);
+    }
+
     if (loadingSession || !session) return;
 
     const checkProfileCompleted = async () => {
@@ -82,6 +105,15 @@ export default function RootLayout() {
       }
 
       if (data && !data.profile_completed) {
+        // New account — wipe any location cache lingering from a previous
+        // user on this device before the personalize/shop flow reads it.
+        await AsyncStorage.multiRemove([
+          'babyly_user_lat',
+          'babyly_user_lng',
+          'babyly_location_label',
+          'babyly_radius_meters',
+          'babyly_location_setup_complete',
+        ]);
         const { firstName, lastName } = getPendingGoogleProfile();
         clearPendingGoogleProfile();
         router.replace({
@@ -182,6 +214,8 @@ export default function RootLayout() {
 
   // Handle notification taps
   const notificationResponseListener = useRef<any>();
+  const lastHandledNotificationId = useRef<string | null>(null);
+  const pendingDeepLink = useRef<any>(null);
 
   const handleNotificationDeepLink = async (data: any) => {
     if (!data) return;
@@ -189,7 +223,7 @@ export default function RootLayout() {
     console.log('handleNotificationDeepLink data:', JSON.stringify(data));
 
     // Mark notification as read if we have its ID
-    if (data.notification_id) {
+    if (data.notification_id && data.type !== 'rating_request') {
       supabase
         .from('notifications')
         .update({ is_read: true })
@@ -236,8 +270,10 @@ export default function RootLayout() {
     const subscription =
       Notifications.addNotificationResponseReceivedListener(
         (response) => {
+          const notificationId = response.notification.request.identifier;
+          if (notificationId === lastHandledNotificationId.current) return;
+          lastHandledNotificationId.current = notificationId;
           const data = response.notification.request.content.data;
-          console.log('Push notification tap data:', JSON.stringify(data));
           handleNotificationDeepLink(data);
         }
       );
@@ -248,8 +284,16 @@ export default function RootLayout() {
     // notification tap
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response) {
+        const notificationId = response.notification.request.identifier;
+        if (notificationId === lastHandledNotificationId.current) return;
+        lastHandledNotificationId.current = notificationId;
         const data = response.notification.request.content.data;
-        handleNotificationDeepLink(data);
+        if (loadingSession || !session) {
+          // Queue for replay once auth resolves
+          pendingDeepLink.current = data;
+        } else {
+          handleNotificationDeepLink(data);
+        }
       }
     });
 
@@ -263,7 +307,8 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthContext.Provider value={{ session, loadingSession }}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthContext.Provider value={{ session, loadingSession }}>
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -283,6 +328,7 @@ export default function RootLayout() {
         <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="about" options={{ headerShown: false }} />
       </Stack>
-    </AuthContext.Provider>
+      </AuthContext.Provider>
+    </GestureHandlerRootView>
   );
 }
