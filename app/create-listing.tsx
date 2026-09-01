@@ -330,25 +330,21 @@ export default function Sell() {
         setCurrentStep(3);
       }
     } else if (currentStep === 6) {
-      const selectedCategory = categories.find(c => c.id === form.categoryId);
-      if (selectedCategory?.slug === 'gear' && form.subcategoryId) {
-        setCurrentStep(4);
+      if (hasAttributes) {
+        setCurrentStep(5);
       } else {
-        setCurrentStep(3);
+        const selectedCategory = categories.find(c => c.id === form.categoryId);
+        if (selectedCategory?.slug === 'gear' && form.subcategoryId) {
+          setCurrentStep(4);
+        } else {
+          setCurrentStep(3);
+        }
       }
     } else if (currentStep === 8) {
-      if (hasAttributes) {
-        setCurrentStep(7);
-      } else {
-        setCurrentStep(6);
-      }
+      setCurrentStep(7);
     } else if (currentStep === 9) {
       if (form.listingType === 'buy_nothing') {
-        if (hasAttributes) {
-          setCurrentStep(7);
-        } else {
-          setCurrentStep(6);
-        }
+        setCurrentStep(7);
       } else {
         setCurrentStep(8);
       }
@@ -362,19 +358,19 @@ export default function Sell() {
       const selectedCategory = categories.find(c => c.id === form.categoryId);
       if (selectedCategory?.slug === 'gear') {
         setCurrentStep(4);
-      } else {
+      } else if (hasAttributes) {
         setCurrentStep(5);
+      } else {
+        setCurrentStep(6);
       }
     } else if (currentStep === 4) {
-      setCurrentStep(5);
-    } else if (currentStep === 6) {
       if (hasAttributes) {
-        setCurrentStep(7);
-      } else if (form.listingType === 'buy_nothing') {
-        setCurrentStep(9);
+        setCurrentStep(5);
       } else {
-        setCurrentStep(8);
+        setCurrentStep(6);
       }
+    } else if (currentStep === 5) {
+      setCurrentStep(6);
     } else if (currentStep === 7) {
       if (form.listingType === 'buy_nothing') {
         setCurrentStep(9);
@@ -394,9 +390,9 @@ export default function Sell() {
       case 2: return form.photos.length > 0;
       case 3: return form.categoryId !== null;
       case 4: return form.subcategoryId !== null;
-      case 5: return form.title.trim() !== '' && form.description.trim() !== '';
-      case 6: return form.condition !== null;
-      case 7: return true;
+      case 5: return true;
+      case 6: return form.title.trim() !== '' && form.description.trim() !== '';
+      case 7: return form.condition !== null;
       case 8: return parseFloat(form.price) > 0;
       case 9: return true;
       default: return false;
@@ -1165,7 +1161,7 @@ export default function Sell() {
                 </View>
               )}
 
-              {currentStep === 5 && (
+              {currentStep === 6 && (
                 <View style={styles.stepContainer}>
                   <Text style={styles.stepTitle}>Describe your item</Text>
 
@@ -1363,7 +1359,7 @@ export default function Sell() {
                 </View>
               )}
 
-              {currentStep === 6 && (
+              {currentStep === 7 && (
                 <View style={styles.stepContainer}>
                   <Text style={styles.stepTitle}>What's the condition?</Text>
                   <View style={styles.conditionGrid}>
@@ -1386,7 +1382,7 @@ export default function Sell() {
                 </View>
               )}
 
-              {currentStep === 7 && (
+              {currentStep === 5 && (
                 <View style={styles.stepContainer}>
                   <Text style={styles.stepTitle}>Tell us more</Text>
                   <Text style={styles.stepSubtitle}>All optional</Text>
