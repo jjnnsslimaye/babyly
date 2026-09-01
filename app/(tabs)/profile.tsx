@@ -127,7 +127,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-const SWIPE_THRESHOLD = 40;
+const SWIPE_THRESHOLD = 60;
 const ACTION_WIDTH = 160; // two buttons at 80px each
 
 type SwipeableRowProps = {
@@ -194,47 +194,58 @@ function SwipeableRow({
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 20 &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
+        return Math.abs(gestureState.dx) > 8 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 3;
       },
       onPanResponderMove: (_, gestureState) => {
-        const newX = isOpen.current
-          ? Math.min(0, -ACTION_WIDTH + gestureState.dx)
-          : Math.min(0, gestureState.dx);
+        const rawX = isOpen.current
+          ? -ACTION_WIDTH + gestureState.dx
+          : gestureState.dx;
+        // Apply slight resistance — row moves at 85% of finger speed
+        // giving a physical "weight" feel
+        const resistedX = rawX * 0.85;
+        const newX = Math.min(0, resistedX);
         translateX.setValue(newX);
       },
       onPanResponderRelease: (_, gestureState) => {
+        const { dx, vx } = gestureState;
+        // Fast flick commits regardless of distance
+        const fastFlickLeft = vx < -0.5;
+        const fastFlickRight = vx > 0.5;
+
         if (isOpen.current) {
-          // Row is open — swipe right to close, swipe left to keep open
-          if (gestureState.dx > SWIPE_THRESHOLD) {
+          if (dx > SWIPE_THRESHOLD || fastFlickRight) {
             isOpen.current = false;
             Animated.spring(translateX, {
               toValue: 0,
               useNativeDriver: true,
-              bounciness: 4,
+              bounciness: 0,
+              speed: 20,
             }).start();
           } else {
             Animated.spring(translateX, {
               toValue: -ACTION_WIDTH,
               useNativeDriver: true,
-              bounciness: 4,
+              bounciness: 0,
+              speed: 20,
             }).start();
           }
         } else {
-          // Row is closed — swipe left to open
-          if (gestureState.dx < -SWIPE_THRESHOLD) {
+          if (dx < -SWIPE_THRESHOLD || fastFlickLeft) {
             isOpen.current = true;
             onOpen?.(itemId);
             Animated.spring(translateX, {
               toValue: -ACTION_WIDTH,
               useNativeDriver: true,
-              bounciness: 4,
+              bounciness: 0,
+              speed: 20,
             }).start();
           } else {
             Animated.spring(translateX, {
               toValue: 0,
               useNativeDriver: true,
-              bounciness: 4,
+              bounciness: 0,
+              speed: 20,
             }).start();
           }
         }
@@ -273,7 +284,10 @@ function SwipeableRow({
 
       {/* The row itself slides left */}
       <Animated.View
-        style={{ transform: [{ translateX }] }}
+        style={{
+          transform: [{ translateX }],
+          backgroundColor: '#FAFAFA',
+        }}
         {...panResponder.panHandlers}
       >
         {children}
@@ -618,15 +632,7 @@ export default function Profile() {
       const isBuyNothing = listing.listing_type === 'buy_nothing';
       const newStatus = isBuyNothing ? 'claimed' : 'sold';
 
-      // 1. Update listing status
-      const table = isBuyNothing ? 'buy_nothing_listings' : 'listings';
-      const { error: statusError } = await supabase
-        .from(table)
-        .update({ status: newStatus })
-        .eq('id', listing.id);
-      if (statusError) throw statusError;
-
-      // 2. Create rating row
+      // 1. Create rating row
       const { error: ratingError } = await supabase
         .from('ratings')
         .insert({
@@ -640,6 +646,14 @@ export default function Profile() {
           seller_rated_at: new Date().toISOString(),
         });
       if (ratingError) throw ratingError;
+
+      // 2. Update listing status
+      const table = isBuyNothing ? 'buy_nothing_listings' : 'listings';
+      const { error: statusError } = await supabase
+        .from(table)
+        .update({ status: newStatus })
+        .eq('id', listing.id);
+      if (statusError) throw statusError;
 
       const sellerName = profile?.first_name || 'Someone';
 
@@ -1764,14 +1778,6 @@ export default function Profile() {
         )}
 
         <Text style={styles.sectionHeader}>APP</Text>
-
-        <TouchableOpacity
-          style={styles.settingsRow}
-          onPress={() => router.push('/about')}
-        >
-          <Text style={styles.settingsLabel}>About Babyly</Text>
-          <Ionicons name="chevron-forward" size={16} color="#CCCCCC" />
-        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.settingsRow}
