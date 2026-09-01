@@ -198,6 +198,7 @@ export default function Chat() {
   const [totalUnread, setTotalUnread] = useState(0);
   const [buyingUnreadCount, setBuyingUnreadCount] = useState(0);
   const [sellingUnreadCount, setSellingUnreadCount] = useState(0);
+  const [bellRefreshKey, setBellRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!loadingSession && !session) {
@@ -337,6 +338,7 @@ export default function Chat() {
       if (session?.user?.id) {
         fetchConversations(activeRole);
         fetchTotalUnread();
+        setBellRefreshKey(prev => prev + 1);
       }
     }, [session?.user?.id, activeRole, fetchConversations, fetchTotalUnread])
   );
@@ -547,7 +549,7 @@ export default function Chat() {
           <Text style={styles.wordmark}>Messages</Text>
         </View>
         {session?.user?.id && (
-          <NotificationBell userId={session.user.id} />
+          <NotificationBell userId={session.user.id} refreshKey={bellRefreshKey} />
         )}
       </View>
 

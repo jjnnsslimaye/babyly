@@ -16,6 +16,7 @@ import BuyerRatingModal from './BuyerRatingModal';
 
 type NotificationBellProps = {
   userId: string;
+  refreshKey?: number;
 };
 
 type AppNotification = {
@@ -67,7 +68,7 @@ const formatRelativeTime = (timestamp: string): string => {
   });
 };
 
-export default function NotificationBell({ userId }: NotificationBellProps) {
+export default function NotificationBell({ userId, refreshKey = 0 }: NotificationBellProps) {
   const router = useRouter();
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -101,7 +102,7 @@ export default function NotificationBell({ userId }: NotificationBellProps) {
   useEffect(() => {
     if (!userId) return;
     fetchNotifications();
-  }, [userId]);
+  }, [userId, refreshKey]);
 
   useEffect(() => {
     if (!userId) return;
