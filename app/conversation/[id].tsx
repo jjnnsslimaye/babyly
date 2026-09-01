@@ -1264,7 +1264,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
   },
   bubbleWrap: {
-    marginBottom: 2,
+    marginBottom: 8,
     maxWidth: '75%',
   },
   bubbleWrapMine: {

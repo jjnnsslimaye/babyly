@@ -7,7 +7,7 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 export type ActionSheetOption = {
   label: string;
@@ -35,11 +35,13 @@ export default function ActionSheet({
 }: ActionSheetProps) {
   const translateY = useRef(new Animated.Value(300)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-  const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      setAnimating(true);
+      // Reset to start position before animating in
+      // so the first render is always off-screen
+      translateY.setValue(300);
+      opacity.setValue(0);
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 1,
@@ -52,9 +54,8 @@ export default function ActionSheet({
           stiffness: 200,
           useNativeDriver: true,
         }),
-      ]).start(() => setAnimating(false));
+      ]).start();
     } else {
-      setAnimating(true);
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 0,
@@ -66,7 +67,7 @@ export default function ActionSheet({
           duration: 150,
           useNativeDriver: true,
         }),
-      ]).start(() => setAnimating(false));
+      ]).start();
     }
   }, [visible]);
 
@@ -79,10 +80,11 @@ export default function ActionSheet({
       statusBarTranslucent
     >
       <Pressable style={styles.backdropPressable} onPress={onClose}>
-        <Animated.View style={[styles.backdrop, { opacity }]} />
+        <Animated.View style={[styles.backdrop, { opacity }]} pointerEvents="none" />
       </Pressable>
       <Animated.View
         style={[styles.sheet, { transform: [{ translateY }] }]}
+        pointerEvents="box-none"
       >
         {/* Drag handle */}
         <View style={styles.handle} />
@@ -105,13 +107,12 @@ export default function ActionSheet({
               option.disabled && styles.optionDisabled,
             ]}
             onPress={() => {
-              if (option.disabled || animating) return;
+              if (option.disabled) return;
               onClose();
-              // Small delay so sheet closes before action fires
-              setTimeout(option.onPress, 150);
+              option.onPress();
             }}
             activeOpacity={0.6}
-            disabled={animating}
+            disabled={option.disabled}
           >
             <Text
               style={[
@@ -129,7 +130,6 @@ export default function ActionSheet({
             style={styles.cancelButton}
             onPress={onClose}
             activeOpacity={0.6}
-            disabled={animating}
           >
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
