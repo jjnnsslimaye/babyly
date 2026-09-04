@@ -1,0 +1,38 @@
+appId: com.jnlimaye.babyly
+---
+# Flow 06: Sign out
+# Starting state: Logged in as maestro_seller, on any tab
+# Expected: User is signed out and lands on Shop feed as guest
+
+# Navigate to Profile tab
+- tapOn:
+    id: "tab-profile"
+
+- waitForAnimationToEnd
+
+# Tap Settings tab within Profile
+- tapOn:
+    text: "Settings"
+
+- waitForAnimationToEnd
+
+# Tap Sign out row
+- tapOn:
+    id: "settings-signout-row"
+
+- waitForAnimationToEnd
+
+# Tap Sign out confirmation in ActionSheet
+# retryTapIfNoChange handles the ActionSheet first-tap delay
+- tapOn:
+    id: "signout-confirm-button"
+    retryTapIfNoChange: true
+
+- waitForAnimationToEnd
+
+# Assert we're back on Shop as guest
+# Profile tab should redirect to login if tapped (confirms logged out)
+- assertVisible:
+    id: "tab-shop"
+
+- takeScreenshot: "06_sign_out_success"nn

@@ -1,0 +1,5 @@
+# Suite 1: Auth flows
+# Starting state: App running, browsing as guest on Shop feed
+flows:
+  - flows/01_sign_in.yaml
+  - flows/06_sign_out.yaml

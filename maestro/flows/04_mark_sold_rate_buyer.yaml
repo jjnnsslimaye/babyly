@@ -1,0 +1,71 @@
+appId: com.jnlimaye.babyly
+---
+# Flow 04: Mark listing as sold and rate buyer
+# Starting state: Logged in as maestro_seller, Manage ActionSheet open
+# Expected: Listing marked sold, seller rating submitted
+
+# ── ActionSheet — Mark as Sold ───────────────────
+- tapOn:
+    id: "mark-as-sold-option"
+    retryTapIfNoChange: true
+
+- waitForAnimationToEnd
+
+# ── Buyer search ─────────────────────────────────
+- tapOn:
+    id: "rating-buyer-search-input"
+- inputText: "Maestro"
+
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+# Tap buyer result row
+- tapOn:
+    point: "50%, 23%"
+- tapOn:
+    point: "50%, 25%"
+
+- waitForAnimationToEnd
+
+# ── Rate buyer ───────────────────────────────────
+# Select 5 stars
+- tapOn:
+    id: "rating-star-5"
+
+- waitForAnimationToEnd
+
+# Select Friendly tag
+- tapOn:
+    id: "rating-tag-friendly"
+
+- waitForAnimationToEnd
+
+# Leave a comment
+- tapOn:
+    id: "rating-comment-input"
+- inputText: "Great buyer, smooth transaction!"
+
+# Dismiss keyboard by tapping static label
+- tapOn:
+    text: "Your rating"
+
+- waitForAnimationToEnd
+
+# Tap Continue
+- tapOn:
+    id: "rating-continue-button"
+
+- waitForAnimationToEnd
+
+# ── Confirm & Submit ─────────────────────────────
+- tapOn:
+    id: "rating-submit-button"
+
+- waitForAnimationToEnd
+
+# Wait for auto-dismiss (2.2 seconds)
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+
+- takeScreenshot: "04_mark_sold_rate_buyer_success"

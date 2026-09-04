@@ -1,0 +1,6 @@
+# Suite 2: Core flows
+# Starting state: Logged in as maestro_seller on Shop feed
+flows:
+  - flows/02_create_listing.yaml
+  - flows/03_send_message.yaml
+  - flows/08_edit_listing.yaml

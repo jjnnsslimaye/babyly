@@ -1,0 +1,135 @@
+appId: com.jnlimaye.babyly
+---
+# Flow 02: Create a listing (sell flow)
+# Starting state: Logged in as maestro_seller, on Shop feed
+# Expected: Listing posted and visible in seller's profile
+
+# Tap Sell button in tab bar
+- tapOn:
+    id: "tab-sell"
+
+- waitForAnimationToEnd
+
+# Step 1 — Select listing type: Selling
+- tapOn:
+    id: "create-listing-type-shop"
+
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 2 — Photos
+# Tap add photo button
+- tapOn:
+    id: "create-listing-add-photo"
+
+- waitForAnimationToEnd
+
+# Handle photo library permission if it appears
+- tapOn:
+    text: "Allow Access to All Photos"
+    optional: true
+
+- waitForAnimationToEnd
+
+# Select first available photo from library
+- tapOn:
+    text: "Recents"
+    optional: true
+
+- waitForAnimationToEnd
+
+# Tap first photo in the grid
+- tapOn:
+    index: 0
+
+- waitForAnimationToEnd
+
+# Confirm photo selection — tap checkmark in top right
+- tapOn:
+    point: "89%, 17%"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 3 — Category: select Clothes
+- tapOn:
+    text: "Clothes"
+
+- waitForAnimationToEnd
+
+# Continue after category selection
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 5 — Attributes (gender, size, type)
+# Select a gender
+- tapOn:
+    text: "Unisex"
+    optional: true
+
+# Select a size
+- tapOn:
+    text: "3-6M"
+    optional: true
+
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 6 — Title and Description
+- tapOn:
+    id: "create-listing-title"
+- inputText: "Maestro Test Listing"
+- tapOn:
+    text: "TITLE"
+
+- scroll
+
+- tapOn:
+    id: "create-listing-description"
+- inputText: "This is an automated test listing created by Maestro."
+
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 7 — Condition: select Gently Used
+- tapOn:
+    id: "condition-gently-used"
+
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 8 — Price
+- tapOn:
+    id: "create-listing-price"
+- inputText: "25"
+
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 9 — Review and submit
+- tapOn:
+    id: "create-listing-submit"
+
+- waitForAnimationToEnd
+
+# Assert listing was created — should land on listing detail
+- assertVisible:
+    text: "Maestro Test Listing"
+
+- takeScreenshot: "02_create_listing_success"

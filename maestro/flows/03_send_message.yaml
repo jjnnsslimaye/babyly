@@ -1,0 +1,105 @@
+appId: com.jnlimaye.babyly
+---
+# Flow 03: Send messages as buyer
+# Starting state: Logged in as maestro_seller on listing detail
+# Expected: Buyer sends quick reply, text message, and image message
+
+# ── Sign out of seller account ──────────────────
+- tapOn:
+    id: "tab-profile"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Settings"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "settings-signout-row"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "signout-confirm-button"
+    retryTapIfNoChange: true
+
+- waitForAnimationToEnd
+
+# ── Sign in as buyer ────────────────────────────
+- tapOn:
+    id: "tab-profile"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "login-email-input"
+- inputText: "maestro_buyer@babyly.com"
+
+- tapOn:
+    id: "login-password-input"
+- inputText: "test1234"
+
+- tapOn:
+    id: "login-submit-button"
+
+- waitForAnimationToEnd
+
+# Handle iOS Save Password dialog if it appears
+- tapOn:
+    text: "Not Now"
+    optional: true
+
+- waitForAnimationToEnd
+
+# ── Search for listing ──────────────────────────
+- tapOn:
+    id: "tab-shop"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "shop-search-input"
+- inputText: "Maestro Test Listing"
+- pressKey: Enter
+
+- waitForAnimationToEnd
+
+# Tap the listing card to open detail
+- tapOn:
+    text: "Listing: Maestro Test Listing"
+
+- waitForAnimationToEnd
+
+# ── Contact Seller ──────────────────────────────
+- tapOn:
+    id: "listing-message-seller-button"
+
+- waitForAnimationToEnd
+
+# ── Quick reply ─────────────────────────────────
+- tapOn:
+    id: "quick-reply-available"
+    optional: true
+
+- waitForAnimationToEnd
+
+# ── Free text message ───────────────────────────
+- tapOn:
+    id: "conversation-message-input"
+- inputText: "Hi, I am interested in this item!"
+
+- tapOn:
+    id: "conversation-send-button"
+
+- waitForAnimationToEnd
+
+# Assert messages are visible in conversation
+- assertVisible:
+    text: "Is this still available?"
+    optional: true
+
+- assertVisible:
+    text: "Hi, I am interested in this item!"
+
+- takeScreenshot: "03_send_message_success"

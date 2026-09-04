@@ -1,0 +1,4 @@
+# Suite 3: Transaction flows
+# Starting state: Logged in as maestro_seller, Manage ActionSheet open
+flows:
+  - flows/04_mark_sold_rate_buyer.yaml

@@ -1,0 +1,135 @@
+appId: com.jnlimaye.babyly
+---
+# Flow 08: Edit listing
+# Starting state: Logged in as maestro_buyer (end of Flow 03)
+# Expected: Listing title updated and visible on listing detail
+
+# ── Sign out of buyer ───────────────────────────
+- tapOn:
+    id: "tab-profile"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Settings"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "settings-signout-row"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "signout-confirm-button"
+    retryTapIfNoChange: true
+
+- waitForAnimationToEnd
+
+# ── Sign in as seller ───────────────────────────
+- tapOn:
+    id: "tab-profile"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "login-email-input"
+- inputText: "maestro_seller@babyly.com"
+
+- tapOn:
+    id: "login-password-input"
+- inputText: "test1234"
+
+- tapOn:
+    id: "login-submit-button"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Not Now"
+    optional: true
+
+- waitForAnimationToEnd
+
+# ── Find listing ────────────────────────────────
+- tapOn:
+    id: "tab-shop"
+
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "shop-search-input"
+- inputText: "Maestro Test Listing"
+- pressKey: Enter
+
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Listing: Maestro Test Listing"
+
+- waitForAnimationToEnd
+
+# ── Tap Edit Listing ────────────────────────────
+- tapOn:
+    id: "listing-edit-button"
+
+- waitForAnimationToEnd
+
+# ── Edit mode starts at step 2 (photos) ─────────
+# Continue through photos unchanged
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 3 — Category already selected, continue
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 5 — Attributes already selected, continue
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 6 — Update title
+- tapOn:
+    id: "create-listing-title"
+
+# Clear existing title and type new one
+- eraseText: 50
+- inputText: "Maestro Test Listing Updated"
+
+- tapOn:
+    text: "TITLE"
+
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 7 — Condition already selected, continue
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 8 — Price already set, continue
+- tapOn:
+    id: "create-listing-continue"
+
+- waitForAnimationToEnd
+
+# Step 9 — Save Changes
+- tapOn:
+    id: "create-listing-submit"
+
+- waitForAnimationToEnd
+
+# Assert updated title is visible
+- assertVisible:
+    text: "Maestro Test Listing Updated"
+
+- takeScreenshot: "08_edit_listing_success"

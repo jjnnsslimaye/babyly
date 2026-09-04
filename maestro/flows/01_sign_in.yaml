@@ -1,0 +1,40 @@
+appId: com.jnlimaye.babyly
+---
+# Flow 01: Sign in with email and password
+# Starting state: App running, browsing as guest on Shop feed
+# Expected: User lands on Shop feed logged in as maestro_seller
+
+# Navigate to login via Profile tab
+- tapOn:
+    id: "tab-profile"
+
+- waitForAnimationToEnd
+
+# Enter email
+- tapOn:
+    id: "login-email-input"
+- inputText: "maestro_seller@babyly.com"
+
+# Enter password
+- tapOn:
+    id: "login-password-input"
+- inputText: "test1234"
+
+# Submit
+- tapOn:
+    id: "login-submit-button"
+
+- waitForAnimationToEnd
+
+# Handle iOS Save Password dialog if it appears
+- tapOn:
+    text: "Not Now"
+    optional: true
+
+- waitForAnimationToEnd
+
+# Assert Shop tab is visible (confirms logged in)
+- assertVisible:
+    id: "tab-shop"
+
+- takeScreenshot: "01_sign_in_success"
