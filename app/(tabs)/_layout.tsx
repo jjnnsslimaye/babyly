@@ -47,6 +47,7 @@ function CustomTabBar(props: any) {
                 }
                 router.push('/create-listing');
               }}
+              testID="tab-sell"
               style={styles.sellButtonContainer}
             >
               {({ pressed }) => (
@@ -81,6 +82,7 @@ function CustomTabBar(props: any) {
             key={route.key}
             onPress={onPress}
             style={styles.tab}
+            testID={`tab-${route.name}`}
           >
             <View style={{ position: 'relative' }}>
               {options.tabBarIcon?.({

@@ -86,10 +86,10 @@ type Brand = {
 };
 
 const CONDITION_LABELS = [
-  { label: 'New (with tags)', value: 'new_unopened', description: 'Never used, tags still on' },
-  { label: 'Like New', value: 'like_new', description: 'Used once or twice, no visible wear' },
-  { label: 'Gently Used', value: 'gently_used', description: 'Some signs of use, fully functional' },
-  { label: 'Used', value: 'used', description: 'Visible wear but still works great' },
+  { label: 'New (with tags)', value: 'new_unopened', description: 'Never used, tags still on', testID: 'condition-new' },
+  { label: 'Like New', value: 'like_new', description: 'Used once or twice, no visible wear', testID: 'condition-like-new' },
+  { label: 'Gently Used', value: 'gently_used', description: 'Some signs of use, fully functional', testID: 'condition-gently-used' },
+  { label: 'Used', value: 'used', description: 'Visible wear but still works great', testID: 'condition-used' },
 ];
 
 const PAYMENT_METHODS = ['Cash', 'Venmo', 'Zelle', 'PayPal', 'Apple Pay', 'Facebook Pay'];
@@ -931,6 +931,7 @@ export default function Sell() {
                 style={[styles.continueButton, submitting && styles.continueButtonDisabled]}
                 onPress={handleSubmit}
                 disabled={submitting}
+                testID="create-listing-submit"
               >
                 {submitting ? (
                   <ActivityIndicator size="small" color="#ffffff" />
@@ -968,6 +969,7 @@ export default function Sell() {
                         setForm(prev => ({ ...prev, listingType: 'shop' }));
                       }}
                       activeOpacity={isEditMode && form.listingType !== 'shop' ? 1 : 0.7}
+                      testID="create-listing-type-shop"
                     >
                       <Ionicons name="bag-outline" size={48} color={form.listingType === 'shop' ? '#A4C8D8' : '#999999'} />
                       <Text style={[
@@ -991,6 +993,7 @@ export default function Sell() {
                         setForm(prev => ({ ...prev, listingType: 'buy_nothing' }));
                       }}
                       activeOpacity={isEditMode && form.listingType !== 'buy_nothing' ? 1 : 0.7}
+                      testID="create-listing-type-free"
                     >
                       <Ionicons name="gift-outline" size={48} color={form.listingType === 'buy_nothing' ? '#A4C8D8' : '#999999'} />
                       <Text style={[
@@ -1016,7 +1019,7 @@ export default function Sell() {
 
                   {form.photos.length === 0 ? (
                     <View style={styles.addPhotosContainer}>
-                      <TouchableOpacity style={styles.addPhotosButton} onPress={handlePickPhotos}>
+                      <TouchableOpacity style={styles.addPhotosButton} onPress={handlePickPhotos} testID="create-listing-add-photo">
                         <Ionicons name="add" size={32} color="#A4C8D8" />
                       </TouchableOpacity>
                       <Text style={styles.addPhotosHint}>Tap to add photos</Text>
@@ -1173,6 +1176,7 @@ export default function Sell() {
                     style={styles.input}
                     placeholder="Title (e.g. UPPAbaby Vista V2 Stroller)"
                     placeholderTextColor="#CCCCCC"
+                    testID="create-listing-title"
                     value={form.title}
                     onChangeText={(text) => setForm(prev => ({ ...prev, title: text }))}
                     editable={!submitting}
@@ -1186,6 +1190,7 @@ export default function Sell() {
                     style={[styles.input, styles.textArea]}
                     placeholder="Description (condition, accessories, etc.)"
                     placeholderTextColor="#CCCCCC"
+                    testID="create-listing-description"
                     value={form.description}
                     onChangeText={(text) => setForm(prev => ({ ...prev, description: text }))}
                     multiline
@@ -1366,6 +1371,7 @@ export default function Sell() {
                     {CONDITION_LABELS.map(cond => (
                       <TouchableOpacity
                         key={cond.value}
+                        testID={cond.testID}
                         style={[
                           styles.conditionCard,
                           form.condition === cond.value && styles.conditionCardSelected,
@@ -1429,6 +1435,7 @@ export default function Sell() {
                       style={styles.priceInput}
                       placeholder="0.00"
                       placeholderTextColor="#CCCCCC"
+                      testID="create-listing-price"
                       value={form.price}
                       onChangeText={(text) => {
                         // Strip non-numeric characters except decimal point
@@ -1473,6 +1480,7 @@ export default function Sell() {
                 style={[styles.continueButton, !isContinueEnabled() && styles.continueButtonDisabled]}
                 onPress={handleContinue}
                 disabled={!isContinueEnabled()}
+                testID="create-listing-continue"
               >
                 <Text style={styles.continueButtonText}>Continue</Text>
               </TouchableOpacity>

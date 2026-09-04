@@ -192,6 +192,8 @@ function ListingCard({
     <TouchableOpacity
       style={styles.listingCard}
       onPress={() => router.push(`/listing/${listing.id}`)}
+      testID={`shop-listing-card-${listing.id}`}
+      accessibilityLabel={`Listing: ${listing.title}`}
     >
       <View style={styles.photoContainer}>
         <Image
@@ -736,6 +738,7 @@ export default function Shop() {
             style={styles.searchInput}
             placeholder="Search listings..."
             placeholderTextColor="#BBBBBB"
+            testID="shop-search-input"
             value={searchInput}
             onChangeText={handleSearchChange}
             returnKeyType="search"

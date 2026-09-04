@@ -14,6 +14,7 @@ export type ActionSheetOption = {
   onPress: () => void;
   destructive?: boolean;
   disabled?: boolean;
+  testID?: string;
 };
 
 type ActionSheetProps = {
@@ -101,6 +102,7 @@ export default function ActionSheet({
         {options.map((option, index) => (
           <TouchableOpacity
             key={index}
+            testID={option.testID}
             style={[
               styles.option,
               index === options.length - 1 && styles.optionLast,

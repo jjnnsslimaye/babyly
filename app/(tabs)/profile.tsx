@@ -1037,6 +1037,7 @@ export default function Profile() {
       options: [
         {
           label: 'Sign out',
+          testID: 'signout-confirm-button',
           destructive: true,
           onPress: async () => {
             await supabase.auth.signOut();
@@ -1234,6 +1235,7 @@ export default function Profile() {
       });
       options.push({
         label: isBuyNothing ? 'Mark as Claimed' : 'Mark as Sold',
+        testID: 'mark-as-sold-option',
         onPress: () => {
           setActionSheet((prev) => ({ ...prev, visible: false }));
           setTimeout(() => startRatingFlow(listing), 300);
@@ -1246,6 +1248,7 @@ export default function Profile() {
       });
       options.push({
         label: isBuyNothing ? 'Mark as Claimed' : 'Mark as Sold',
+        testID: 'mark-as-sold-option',
         onPress: () => {
           setActionSheet((prev) => ({ ...prev, visible: false }));
           setTimeout(() => startRatingFlow(listing), 300);
@@ -1805,7 +1808,7 @@ export default function Profile() {
 
         <Text style={styles.sectionHeader}>DANGER ZONE</Text>
 
-        <TouchableOpacity style={styles.settingsRow} onPress={handleSignOut}>
+        <TouchableOpacity style={styles.settingsRow} onPress={handleSignOut} testID="settings-signout-row">
           <Text style={[styles.settingsLabel, styles.signOutText]}>Sign out</Text>
         </TouchableOpacity>
 
@@ -2065,6 +2068,7 @@ export default function Profile() {
                     style={styles.buyerSearchInput}
                     placeholder="Search by name..."
                     placeholderTextColor="#BBBBBB"
+                    testID="rating-buyer-search-input"
                     value={buyerSearchQuery}
                     onChangeText={handleBuyerSearch}
                     autoFocus
@@ -2080,6 +2084,7 @@ export default function Profile() {
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={styles.buyerResultRow}
+                    testID={`buyer-result-${item.id}`}
                     onPress={() => {
                       setRatingFlow((prev) => ({
                         ...prev,
@@ -2146,6 +2151,7 @@ export default function Profile() {
                 {[1, 2, 3, 4, 5].map((star) => (
                   <TouchableOpacity
                     key={star}
+                    testID={`rating-star-${star}`}
                     onPress={() =>
                       setRatingFlow((prev) => ({ ...prev, stars: star }))
                     }
@@ -2169,6 +2175,7 @@ export default function Profile() {
                   return (
                     <TouchableOpacity
                       key={tag.tag_key}
+                      testID={`rating-tag-${tag.tag_key}`}
                       style={[
                         styles.tagPill,
                         selected && styles.tagPillSelected,
@@ -2204,6 +2211,7 @@ export default function Profile() {
                 style={styles.ratingCommentInput}
                 placeholder="Share your experience..."
                 placeholderTextColor="#BBBBBB"
+                testID="rating-comment-input"
                 value={ratingFlow.comment}
                 onChangeText={(text) =>
                   setRatingFlow((prev) => ({ ...prev, comment: text }))
@@ -2224,6 +2232,7 @@ export default function Profile() {
                 onPress={() =>
                   setRatingFlow((prev) => ({ ...prev, step: 'confirm' }))
                 }
+                testID="rating-continue-button"
               >
                 <Text style={styles.ratingNextButtonText}>Continue</Text>
               </TouchableOpacity>
@@ -2290,6 +2299,7 @@ export default function Profile() {
                 style={styles.ratingNextButton}
                 onPress={handleSubmitRating}
                 disabled={submittingRating}
+                testID="rating-submit-button"
               >
                 {submittingRating ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />

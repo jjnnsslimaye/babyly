@@ -73,6 +73,12 @@ function formatLastSeen(lastSeenAt: string | null): string {
   })}`;
 }
 
+const QUICK_REPLY_TESTIDS: Record<string, string> = {
+  'Is this still available?': 'quick-reply-available',
+  'Can I pick this up today?': 'quick-reply-pickup',
+  'Is the price negotiable?': 'quick-reply-price',
+};
+
 function formatMessageTime(timestamp: string): string {
   const date = new Date(timestamp);
   const now = new Date();
@@ -909,6 +915,7 @@ export default function Conversation() {
               ].map((suggestion) => (
                 <TouchableOpacity
                   key={suggestion}
+                  testID={QUICK_REPLY_TESTIDS[suggestion]}
                   style={styles.quickReplyPill}
                   onPress={async () => {
                     if (sending) return;
@@ -1009,6 +1016,7 @@ export default function Conversation() {
             onPress={handleSendImage}
             disabled={uploadingImage}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            testID="conversation-attach-image"
           >
             {uploadingImage ? (
               <ActivityIndicator size="small" color="#A4C8D8" />
@@ -1021,6 +1029,7 @@ export default function Conversation() {
             style={styles.input}
             placeholder="Message..."
             placeholderTextColor="#BBBBBB"
+            testID="conversation-message-input"
             value={inputText}
             onChangeText={setInputText}
             multiline
@@ -1034,6 +1043,7 @@ export default function Conversation() {
             ]}
             onPress={handleSend}
             disabled={!canSend}
+            testID="conversation-send-button"
           >
             {sending ? (
               <ActivityIndicator size="small" color="#FFFFFF" />

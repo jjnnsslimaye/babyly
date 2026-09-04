@@ -263,6 +263,7 @@ export default function Login() {
             style={styles.input}
             placeholder="Email address"
             placeholderTextColor="#CCCCCC"
+            testID="login-email-input"
             value={email}
             onChangeText={handleEmailChange}
             autoCapitalize="none"
@@ -275,6 +276,7 @@ export default function Login() {
               style={styles.passwordInput}
               placeholder="Password"
               placeholderTextColor="#CCCCCC"
+              testID="login-password-input"
               value={password}
               onChangeText={handlePasswordChange}
               secureTextEntry={!showPassword}
@@ -304,7 +306,7 @@ export default function Login() {
               <ActivityIndicator size="small" color="#ffffff" />
             </View>
           ) : (
-            <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+            <TouchableOpacity style={styles.loginButton} onPress={handleLogin} testID="login-submit-button">
               <Text style={styles.loginButtonText}>Login</Text>
             </TouchableOpacity>
           )}

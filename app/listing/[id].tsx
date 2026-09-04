@@ -620,6 +620,7 @@ export default function ListingDetail() {
           ) : (
           <View style={styles.actionBar}>
             <TouchableOpacity
+              testID="listing-edit-button"
               style={[styles.actionButton, styles.editButton]}
               onPress={() =>
                 router.push(
@@ -649,6 +650,7 @@ export default function ListingDetail() {
             style={styles.messageSellerButton}
             onPress={handleContactSeller}
             disabled={contactingSeller}
+            testID="listing-message-seller-button"
           >
             {contactingSeller ? (
               <ActivityIndicator size="small" color="#ffffff" />
