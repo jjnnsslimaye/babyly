@@ -459,8 +459,6 @@ export default function BuyNothing() {
           setLoadingMore(true);
         }
 
-        console.log('Fetching with brand_id:', activeBrand);
-
         const { data, error } = await supabase.rpc('get_buy_nothing_feed', {
           user_lat: userLat,
           user_lng: userLng,

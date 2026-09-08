@@ -17,6 +17,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.jnlimaye.babyly",
+      buildNumber: "1",
       infoPlist: {
         NSCameraUsageDescription: "Babyly needs camera access to take your profile photo.",
         NSPhotoLibraryUsageDescription: "Babyly needs photo library access to choose your profile photo.",
@@ -25,7 +26,8 @@ export default {
     },
     android: {
       package: "com.jnlimaye.babyly",
-      googleServicesFile: "./google-services.json", 
+      versionCode: 1,
+      googleServicesFile: "./google-services.json",
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#ffffff"

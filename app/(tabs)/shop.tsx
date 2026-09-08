@@ -473,8 +473,6 @@ export default function Shop() {
           setLoadingMore(true);
         }
 
-        console.log('Fetching with brand_id:', activeBrand);
-
         const { data, error } = await supabase.rpc('get_shop_feed', {
           user_lat: userLat,
           user_lng: userLng,

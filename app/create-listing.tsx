@@ -131,9 +131,6 @@ export default function Sell() {
   const editListingId = params.id || null;
   const editListingType = params.type || null;
   const isEditMode = !!editListingId;
-  if (isEditMode) {
-    console.log('Edit mode params:', { editListingId, editListingType });
-  }
 
   const [form, setForm] = useState<ListingForm>({
     listingType: null,

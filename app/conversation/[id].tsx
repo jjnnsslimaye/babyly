@@ -156,7 +156,6 @@ export default function Conversation() {
 
   const fetchConversationDetail = async () => {
     if (!session?.user?.id) return;
-      console.log('fetchConversationDetail - session exists:', !!session?.user?.id, 'isNew:', isNew);
 
     if (isNewParam && !conversationId) {
       // No existing conversation — build from params
