@@ -4,6 +4,12 @@ export default {
     slug: "babyly",
     owner: "jnlimaye",
     version: "1.0.0",
+    updates: {
+      url: "https://u.expo.dev/f9e2cd20-6254-4281-b3a0-c375e3f0341a",
+    },
+    runtimeVersion: {
+      policy: "appVersion",
+    },
     scheme: "babyly",
     orientation: "portrait",
     icon: "./assets/icon.png",
