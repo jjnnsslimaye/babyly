@@ -54,6 +54,9 @@ export default function Personalize() {
     prompt_text: string;
   } | null>(null);
   const [loadingQuestion, setLoadingQuestion] = useState(true);
+  const [sources, setSources] = useState<{ source_key: string; label: string }[]>([]);
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [loadingSources, setLoadingSources] = useState(true);
   const [avatarSheet, setAvatarSheet] = useState<{
     visible: boolean;
     options: ActionSheetOption[];
@@ -106,6 +109,24 @@ export default function Personalize() {
       }
     };
     fetchQuestion();
+  }, []);
+
+  useEffect(() => {
+    const fetchSources = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('acquisition_sources')
+          .select('source_key, label')
+          .eq('is_active', true)
+          .order('sort_order');
+        if (!error && data) setSources(data);
+      } catch {
+        // silent fail — optional field
+      } finally {
+        setLoadingSources(false);
+      }
+    };
+    fetchSources();
   }, []);
 
   const handlePickImage = async () => {
@@ -261,6 +282,9 @@ export default function Personalize() {
       if (communityAnswer.trim() && question) {
         updates.bio = { [question.question_key]: communityAnswer.trim() };
       }
+      if (selectedSource) {
+        updates.acquisition_source = selectedSource;
+      }
 
       // Set profile as completed
       updates.profile_completed = true;
@@ -388,6 +412,46 @@ export default function Personalize() {
             maxLength={5}
             editable={!loading}
           />
+        </View>
+
+        {/* ── How did you hear about us ── */}
+        <View style={styles.communityCard}>
+          <View style={styles.communityHeader}>
+            <Ionicons name="megaphone-outline" size={16} color="#A4C8D8" />
+            <Text style={styles.communityHeaderText}>HOW DID YOU HEAR ABOUT US?</Text>
+          </View>
+          <Text style={styles.questionText}>How did you find Babyly?</Text>
+          {loadingSources ? (
+            <ActivityIndicator size="small" color="#A4C8D8" style={{ marginVertical: 8 }} />
+          ) : (
+            <View style={styles.sourcePillsRow}>
+              {sources.map((source) => {
+                const selected = selectedSource === source.source_key;
+                return (
+                  <TouchableOpacity
+                    key={source.source_key}
+                    style={[
+                      styles.sourcePill,
+                      selected && styles.sourcePillSelected,
+                    ]}
+                    onPress={() =>
+                      setSelectedSource(selected ? null : source.source_key)
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.sourcePillText,
+                        selected && styles.sourcePillTextSelected,
+                      ]}
+                    >
+                      {source.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* Community Question Card */}
@@ -599,6 +663,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1A1A1A',
     minHeight: 72,
+  },
+  sourcePillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  sourcePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+  },
+  sourcePillSelected: {
+    borderColor: '#A4C8D8',
+    backgroundColor: '#EAF4F8',
+  },
+  sourcePillText: {
+    fontFamily: 'Quicksand_600SemiBold',
+    fontSize: 13,
+    color: '#666666',
+  },
+  sourcePillTextSelected: {
+    color: '#A4C8D8',
   },
   errorText: {
     fontSize: 14,
