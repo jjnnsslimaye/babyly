@@ -23,7 +23,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.jnlimaye.babyly",
-      buildNumber: "4",
+      buildNumber: "3",
       infoPlist: {
         NSCameraUsageDescription: "Babyly needs camera access to take your profile photo.",
         NSPhotoLibraryUsageDescription: "Babyly needs photo library access to choose your profile photo.",
@@ -33,7 +33,7 @@ export default {
     },
     android: {
       package: "com.jnlimaye.babyly",
-      versionCode: 3,
+      versionCode: 4,
       googleServicesFile: "./google-services.json",
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
