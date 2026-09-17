@@ -23,7 +23,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.jnlimaye.babyly",
-      buildNumber: "3",
+      buildNumber: "4",
       infoPlist: {
         NSCameraUsageDescription: "Babyly needs camera access to take your profile photo.",
         NSPhotoLibraryUsageDescription: "Babyly needs photo library access to choose your profile photo.",
