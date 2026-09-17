@@ -151,7 +151,7 @@ export default function Login() {
         setError('Google Play Services not available.');
       } else {
         console.error('Google Sign-In error:', error);
-        setError('Something went wrong. Please try again.');
+        setError(`Error: ${error.code || 'unknown'} - ${error.message || 'no message'}`);
       }
       setLoading(false);
     }
