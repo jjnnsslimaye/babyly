@@ -12,7 +12,16 @@
           "package_name": "com.jnlimaye.babyly"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "775565479528-dffi4rm19b6c6oao9e197060lqg19rru.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jnlimaye.babyly",
+            "certificate_hash": "02f5c1490649e753910be36a1c663d4de62f8d07"
+          }
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBE0xMuDAQaWWGmJMV6d6n1k9O9cZezie4"
