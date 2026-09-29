@@ -33,7 +33,7 @@ export default {
     },
     android: {
       package: "com.jnlimaye.babyly",
-      versionCode: 5,
+      versionCode: 6,
       googleServicesFile: "./google-services.json",
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
