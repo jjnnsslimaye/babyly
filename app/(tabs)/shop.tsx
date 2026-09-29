@@ -724,7 +724,7 @@ export default function Shop() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Ionicons name="bag-outline" size={31} color="#A4C8D8" />
-          <Text style={styles.wordmark}>Shop</Text>
+          <Text style={styles.wordmark}>Shop ✓</Text>
         </View>
       </View>
 
