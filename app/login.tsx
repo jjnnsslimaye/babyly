@@ -328,22 +328,25 @@ export default function Login() {
             <Text style={styles.forgotPasswordText}>Create an account</Text>
           </TouchableOpacity>
 
-          {/* Divider */}
-          <View style={styles.dividerContainer}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-            <View style={styles.dividerLine} />
-          </View>
+          {/* Divider + Google Button — iOS only (Android DEVELOPER_ERROR under investigation) */}
+          {Platform.OS === 'ios' && (
+            <>
+              <View style={styles.dividerContainer}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+                <View style={styles.dividerLine} />
+              </View>
 
-          {/* Google Button */}
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={handleGoogleSignIn}
-            disabled={loading}
-          >
-            <GoogleLogo size={20} />
-            <Text style={styles.socialButtonText}>Continue with Google</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={handleGoogleSignIn}
+                disabled={loading}
+              >
+                <GoogleLogo size={20} />
+                <Text style={styles.socialButtonText}>Continue with Google</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           {/* Apple Button — iOS only */}
           {Platform.OS === 'ios' && (
